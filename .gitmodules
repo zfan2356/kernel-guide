@@ -1,0 +1,6 @@
+[submodule "3rd/ThunderKittens"]
+	path = 3rd/ThunderKittens
+	url = https://github.com/HazyResearch/ThunderKittens.git
+[submodule "3rd/cutlass"]
+	path = 3rd/cutlass
+	url = https://github.com/NVIDIA/cutlass.git

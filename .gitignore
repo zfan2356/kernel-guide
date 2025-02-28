@@ -4,3 +4,14 @@
 *.ptx
 *.cubin
 *.fatbin
+*.egg-info
+.cache
+.idea
+compile_commands.json
+build
+.vscode
+*.cpython-*.so
+*.pyc
+__pycache__/
+3rd/
+.clangd

@@ -1,0 +1,34 @@
+repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v4.5.0
+      hooks:
+          - id: trailing-whitespace
+            exclude: ^(3rd|doc)\/
+          - id: end-of-file-fixer
+            exclude: ^(3rd|doc)\/
+          - id: check-added-large-files
+            args: ["--maxkb=65536"] # 64MB
+    - repo: https://github.com/doublify/pre-commit-clang-format
+      rev: 62302476d0da01515660132d76902359bed0f782
+      hooks:
+          - id: clang-format
+            files: \.(c|cc|cxx|cpp|frag|glsl|h|hpp|hxx|ih|ispc|ipp|java|js|m|mm|proto|vert|cu|cuh)$
+            exclude: ^(3rd|doc)\/
+    - repo: https://github.com/PyCQA/isort.git
+      rev: "5.13.2"
+      hooks:
+          - id: isort
+            args: ["--profile", "black", "--filter-files"]
+    - repo: https://github.com/psf/black.git
+      rev: "24.2.0"
+      hooks:
+          - id: black
+    - repo: https://github.com/jorisroovers/gitlint.git
+      rev: "v0.19.1"
+      hooks:
+          - id: gitlint
+    # - repo: https://github.com/pylint-dev/pylint.git
+    #   rev: "v3.0.3"
+    #   hooks:
+    #       - id: pylint
+    #         args: ["--min-similarity-lines=20"]
