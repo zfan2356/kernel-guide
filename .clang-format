@@ -1,1 +1,108 @@
+# DeepGEMM project clang-format configuration
+# Run manually to reformat a file:
+# clang-format -i --style=file <file>
+
+Language: Cpp
 BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: false
+IndentPPDirectives: AfterHash
+NamespaceIndentation: Inner
+
+# Line breaks and alignment
+ColumnLimit: 120
+AlwaysBreakTemplateDeclarations: MultiLine
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# Template and function parameters
+BinPackParameters: true
+BinPackArguments: true
+AlignAfterOpenBracket: Align
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+
+# Pointer and reference alignment
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Spacing
+SpaceAfterCStyleCast: false
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles: false
+SpacesInContainerLiterals: true
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# Comments
+AlignTrailingComments: true
+ReflowComments: true
+
+# Other formatting options
+BreakStringLiterals: true
+CompactNamespaces: false
+FixNamespaceComments: true
+IncludeBlocks: Preserve
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 2
+SortIncludes: false
+SortUsingDeclarations: false
+
+# CUDA specific
+Standard: c++17
+
+# Macro handling
+IndentAccessModifiers: false
+AccessModifierOffset: -4
+
+# Alignment
+AlignConsecutiveAssignments: false
+AlignConsecutiveBitFields: false
+AlignConsecutiveDeclarations: false
+AlignConsecutiveMacros: false
+AlignEscapedNewlines: Right
+AlignOperands: Align
+
+# Break options
+BreakAfterJavaFieldAnnotations: false
+BreakBeforeConceptDeclarations: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+
+# Penalties (lower = preferred)
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakString: 1000
+PenaltyBreakTemplateDeclaration: 10
+PenaltyExcessCharacter: 1000000
+PenaltyReturnTypeOnItsOwnLine: 60
+
+# Include categories for better organization
+IncludeCategories:
+  - Regex: '^<.*\.h>'
+    Priority: 1
+  - Regex: '^<.*'
+    Priority: 2
+  - Regex: '.*'
+    Priority: 3
