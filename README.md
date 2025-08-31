@@ -1,31 +1,12 @@
-# CUDA PRACTICE
+# Kernel Guide
 
-> cuda best practice &amp; notes
+## overall
 
-this is a general template for customizing some CUDA operators to integrate into your own training framwork to achieve acceleration effects.
+This project implements CUDA C++ kernels to learn how to utilize advanced features such as `TMA`, `WGMMA`, and other cutting-edge techniques.
 
-choose the right cuda/torch version, the gpu used in this project is A10, so the highest version of nvidia driver is 12.2, you can choose the version that suits your device.
+Additionally, this project includes simple kernels that are compiled to `PTX` to help understand PTX instructions.
 
-```
-micromamba install -c conda-forge cuda-toolkit=12.1
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
-
-## prepare
-
-When commit and push code, pleace use `pre-commit` to ensure consistent code formatting style
-
-```shell
-pip install pre-commit
-pre-commit install
-pre-commit run --all-files
-```
-
-use git-submodule to manage 3rd libs, such as `ThunderKittens` or `cutlass`
-```shell
-git submodules init
-git submodules update
-```
+project also provide a general template for customizing some CUDA operators to integrate into your own training/inference framwork to achieve acceleration effects.
 
 ## pybind version
 
@@ -52,10 +33,9 @@ sudo make install
 ### find Torch
 
 ```shell
-python -c 'import torch;print(torch.utils.cmake_prefix_path)'
+python -c 'import torch; print(torch.utils.cmake_prefix_path)'
 export Torch_DIR="/path/to/your/torchdir"
 ```
-
 
 ## jit version
 
@@ -63,6 +43,8 @@ the second and recommended way to bind cuda kernels to python is using jit. it i
 
 When using JIT for dynamic compilation, we don't need to use `pip install -e.` to compile the CUDA kernel. Instead, we can directly call `call_jit` in Python to achieve dynamic compilation.
 
-### code walkthrough
+## kernel list
 
-- `compiler`:
+- TMA Swizzle
+
+-
