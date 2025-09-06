@@ -6,11 +6,11 @@
 
 namespace kernels {
 
-class DGException final : public std::exception {
+class KernelException final : public std::exception {
     std::string message = {};
 
 public:
-    explicit DGException(const char* name, const char* file, const int line, const std::string& error) {
+    explicit KernelException(const char* name, const char* file, const int line, const std::string& error) {
         message = std::string(name) + " error (" + file + ":" + std::to_string(line) + "): " + error;
     }
 
@@ -19,35 +19,35 @@ public:
     }
 };
 
-#ifndef DG_STATIC_ASSERT
-#    define DG_STATIC_ASSERT(cond, ...) static_assert(cond, __VA_ARGS__)
+#ifndef K_STATIC_ASSERT
+#    define K_STATIC_ASSERT(cond, ...) static_assert(cond, __VA_ARGS__)
 #endif
 
-#ifndef DG_HOST_ASSERT
-#    define DG_HOST_ASSERT(cond)                                                                                       \
+#ifndef K_HOST_ASSERT
+#    define K_HOST_ASSERT(cond)                                                                                        \
         do {                                                                                                           \
             if (not(cond)) {                                                                                           \
-                throw DGException("Assertion", __FILE__, __LINE__, #cond);                                             \
+                throw KernelException("Assertion", __FILE__, __LINE__, #cond);                                         \
             }                                                                                                          \
         } while (0)
 #endif
 
-#ifndef DG_HOST_UNREACHABLE
-#    define DG_HOST_UNREACHABLE(reason) (throw DGException("Assertion", __FILE__, __LINE__, reason))
+#ifndef K_HOST_UNREACHABLE
+#    define K_HOST_UNREACHABLE(reason) (throw KernelException("Assertion", __FILE__, __LINE__, reason))
 #endif
 
-#ifndef DG_NVRTC_CHECK
-#    define DG_NVRTC_CHECK(cmd)                                                                                        \
+#ifndef K_NVRTC_CHECK
+#    define K_NVRTC_CHECK(cmd)                                                                                         \
         do {                                                                                                           \
             const auto& e = (cmd);                                                                                     \
             if (e != NVRTC_SUCCESS) {                                                                                  \
-                throw DGException("NVRTC", __FILE__, __LINE__, nvrtcGetErrorString(e));                                \
+                throw KernelException("NVRTC", __FILE__, __LINE__, nvrtcGetErrorString(e));                            \
             }                                                                                                          \
         } while (0)
 #endif
 
-#ifndef DG_CUDA_DRIVER_CHECK
-#    define DG_CUDA_DRIVER_CHECK(cmd)                                                                                  \
+#ifndef K_CUDA_DRIVER_CHECK
+#    define K_CUDA_DRIVER_CHECK(cmd)                                                                                   \
         do {                                                                                                           \
             const auto& e = (cmd);                                                                                     \
             if (e != CUDA_SUCCESS) {                                                                                   \
@@ -55,19 +55,19 @@ public:
                 const char *name, *info;                                                                               \
                 cuGetErrorName(e, &name), cuGetErrorString(e, &info);                                                  \
                 ss << static_cast<int>(e) << " (" << name << ", " << info << ")";                                      \
-                throw DGException("CUDA driver", __FILE__, __LINE__, ss.str());                                        \
+                throw KernelException("CUDA driver", __FILE__, __LINE__, ss.str());                                    \
             }                                                                                                          \
         } while (0)
 #endif
 
-#ifndef DG_CUDA_RUNTIME_CHECK
-#    define DG_CUDA_RUNTIME_CHECK(cmd)                                                                                 \
+#ifndef K_CUDA_RUNTIME_CHECK
+#    define K_CUDA_RUNTIME_CHECK(cmd)                                                                                  \
         do {                                                                                                           \
             const auto& e = (cmd);                                                                                     \
             if (e != cudaSuccess) {                                                                                    \
                 std::stringstream ss;                                                                                  \
                 ss << static_cast<int>(e) << " (" << cudaGetErrorName(e) << ", " << cudaGetErrorString(e) << ")";      \
-                throw DGException("CUDA runtime", __FILE__, __LINE__, ss.str());                                       \
+                throw KernelException("CUDA runtime", __FILE__, __LINE__, ss.str());                                   \
             }                                                                                                          \
         } while (0)
 #endif

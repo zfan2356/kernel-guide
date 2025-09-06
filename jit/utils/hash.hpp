@@ -1,8 +1,10 @@
 #pragma once
 
 #include <string>
+#include <sstream>
+#include <iomanip>
 
-namespace deep_gemm {
+namespace kernels {
 
 static uint64_t fnv1a(const std::string& data, const uint64_t& seed) {
     uint64_t h = seed;
@@ -30,4 +32,4 @@ static std::string get_hex_digest(const std::string& data) {
     return oss.str();
 }
 
-} // namespace deep_gemm
+} // namespace kernels

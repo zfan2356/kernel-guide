@@ -6,7 +6,7 @@
 #include "device_runtime.hpp"
 #include "handle.hpp"
 
-namespace deep_gemm {
+namespace kernels {
 
 struct LaunchArgs {
     std::pair<int, int> grid_dim;
@@ -31,21 +31,16 @@ public:
 
     explicit KernelRuntime(const std::filesystem::path& dir_path) {
         // Check `prepare_init`
-        DG_HOST_ASSERT(not cuda_home.empty());
+        K_HOST_ASSERT(not cuda_home.empty());
 
         // NOLINT(*-pro-type-member-init)
         const auto& cuobjdump_path = cuda_home / "bin" / "cuobjdump";
         const auto& cubin_path = dir_path / "kernel.cubin";
-        if (get_env<int>("DG_JIT_DEBUG"))
-            printf("Loading CUBIN: %s\n", cubin_path.c_str());
-
-        // Find the only symbol
-        // TODO: use kernel enumeration for newer drivers
         const std::vector<std::string> illegal_names = {"vprintf", "__instantiate_kernel", "__internal",
                                                         "__assertfail"};
         const auto& [exit_code, symbols] =
             call_external_command(fmt::format("{} -symbols {}", cuobjdump_path.c_str(), cubin_path.c_str()));
-        DG_HOST_ASSERT(exit_code == 0);
+        K_HOST_ASSERT(exit_code == 0);
         std::istringstream iss(symbols);
         std::vector<std::string> symbol_names;
         for (std::string line; std::getline(iss, line);) {
@@ -56,15 +51,7 @@ public:
                 symbol_names.push_back(line.substr(last_space + 1));
             }
         }
-        if (get_env<int>("DG_JIT_DEBUG")) {
-            printf("Symbol names: ");
-            for (const auto& symbol : symbol_names)
-                printf("%s, ", symbol.c_str());
-            printf("\n");
-        }
-
-        // Load from the library
-        DG_HOST_ASSERT(symbol_names.size() == 1);
+        K_HOST_ASSERT(symbol_names.size() == 1);
         kernel = load_kernel(cubin_path, symbol_names[0], &library);
     }
 
@@ -81,14 +68,12 @@ public:
     }
 };
 
-DG_DECLARE_STATIC_VAR_IN_CLASS(KernelRuntime, cuda_home);
+K_DECLARE_STATIC_VAR_IN_CLASS(KernelRuntime, cuda_home);
 
 template <typename Derived> class LaunchRuntime {
 public:
     template <typename Args> static std::string generate(const Args& args) {
         const auto& code = Derived::generate_impl(args);
-        if (get_env<int>("DG_JIT_DEBUG", 0))
-            printf("Generated kernel code: %s\n", code.c_str());
         return code;
     }
 
@@ -103,15 +88,8 @@ public:
         const dim3& block_dim = {static_cast<unsigned>(launch_args.num_threads), 1, 1};
         auto config = construct_launch_config(kernel, stream, launch_args.smem_size, grid_dim, block_dim,
                                               launch_args.cluster_dim);
-
-        // Launch in the derived class
-        if (get_env<int>("DG_JIT_DEBUG")) {
-            printf("Launch kernel with {%d, %d} x %d, shared memory: %d bytes, cluster: %d, stream: %ld\n",
-                   launch_args.grid_dim.first, launch_args.grid_dim.second, launch_args.num_threads,
-                   launch_args.smem_size, launch_args.cluster_dim, stream.id());
-        }
         Derived::launch_impl(kernel, config, args);
     }
 };
 
-} // namespace deep_gemm
+} // namespace kernels

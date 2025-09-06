@@ -3,9 +3,9 @@
 #include <functional>
 #include <memory>
 
-#define DG_DECLARE_STATIC_VAR_IN_CLASS(cls, name) decltype(cls::name) cls::name
+#define K_DECLARE_STATIC_VAR_IN_CLASS(cls, name) decltype(cls::name) cls::name
 
-namespace deep_gemm {
+namespace kernels {
 
 template <typename T> class LazyInit {
 public:
@@ -22,4 +22,4 @@ private:
     std::function<std::shared_ptr<T>()> factory;
 };
 
-} // namespace deep_gemm
+} // namespace kernels

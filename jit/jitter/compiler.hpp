@@ -16,7 +16,7 @@
 #include "cache.hpp"
 #include "device_runtime.hpp"
 
-namespace deep_gemm {
+namespace kernels {
 
 class Compiler {
 public:
@@ -46,10 +46,10 @@ public:
 
     Compiler() {
         // Check `prepare_init`
-        DG_HOST_ASSERT(not library_root_path.empty());
-        DG_HOST_ASSERT(not library_include_path.empty());
-        DG_HOST_ASSERT(not cuda_home.empty());
-        DG_HOST_ASSERT(not library_version.empty());
+        K_HOST_ASSERT(not library_root_path.empty());
+        K_HOST_ASSERT(not library_include_path.empty());
+        K_HOST_ASSERT(not cuda_home.empty());
+        K_HOST_ASSERT(not library_version.empty());
 
         // Cache settings
         cache_dir_path = std::filesystem::path(get_env<std::string>("HOME")) / ".deep_gemm";
@@ -82,7 +82,7 @@ public:
 
         // Write into the temporary file
         std::ofstream out(tmp_file_path, std::ios::binary);
-        DG_HOST_ASSERT(out.write(data.data(), data.size()));
+        K_HOST_ASSERT(out.write(data.data(), data.size()));
         out.close();
 
         // Atomically replace
@@ -111,7 +111,7 @@ public:
 
         // Put into the runtime cache
         const auto& runtime = kernel_runtime_cache->get(dir_path);
-        DG_HOST_ASSERT(runtime != nullptr);
+        K_HOST_ASSERT(runtime != nullptr);
         return runtime;
     }
 
@@ -119,28 +119,28 @@ public:
                          const std::filesystem::path& cubin_path) const = 0;
 };
 
-DG_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_root_path);
-DG_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_include_path);
-DG_DECLARE_STATIC_VAR_IN_CLASS(Compiler, cuda_home);
-DG_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_version);
+K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_root_path);
+K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_include_path);
+K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, cuda_home);
+K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_version);
 
 class NVCCCompiler final : public Compiler {
     std::filesystem::path nvcc_path;
 
     std::pair<int, int> get_nvcc_version() const {
-        DG_HOST_ASSERT(std::filesystem::exists(nvcc_path));
+        K_HOST_ASSERT(std::filesystem::exists(nvcc_path));
 
         // Call the version command
         const auto& command = std::string(nvcc_path) + " --version";
         const auto& [return_code, output] = call_external_command(command);
-        DG_HOST_ASSERT(return_code == 0);
+        K_HOST_ASSERT(return_code == 0);
 
         // The version should be at least 12.3, for the best performance with 12.9
         int major, minor;
         std::smatch match;
-        DG_HOST_ASSERT(std::regex_search(output, match, std::regex(R"(release (\d+\.\d+))")));
+        K_HOST_ASSERT(std::regex_search(output, match, std::regex(R"(release (\d+\.\d+))")));
         std::sscanf(match[1].str().c_str(), "%d.%d", &major, &minor);
-        DG_HOST_ASSERT((major > 12 or (major == 12 and minor >= 3)) and "NVCC version should be >= 12.3");
+        K_HOST_ASSERT((major > 12 or (major == 12 and minor >= 3)) and "NVCC version should be >= 12.3");
         if (major == 12 and minor < 9)
             printf("Warning: please use at least NVCC 12.9 for the best DeepGEMM performance\n");
         return {major, minor};
@@ -178,7 +178,7 @@ public:
         const auto& [return_code, output] = call_external_command(command);
         if (return_code != 0) {
             printf("NVCC compilation failed: %s\n", output.c_str());
-            DG_HOST_ASSERT(false and "NVCC compilation failed");
+            K_HOST_ASSERT(false and "NVCC compilation failed");
         }
 
         // Print PTXAS log
@@ -192,9 +192,9 @@ public:
     NVRTCCompiler() {
         // Override the compiler signature
         int major, minor;
-        DG_NVRTC_CHECK(nvrtcVersion(&major, &minor));
+        K_NVRTC_CHECK(nvrtcVersion(&major, &minor));
         signature = fmt::format("NVRTC{}.{}", major, minor);
-        DG_HOST_ASSERT((major > 12 or (major == 12 and minor >= 3)) and "NVRTC version should be >= 12.3");
+        K_HOST_ASSERT((major > 12 or (major == 12 and minor >= 3)) and "NVRTC version should be >= 12.3");
 
         // Build include directories list
         std::string include_dirs;
@@ -244,34 +244,34 @@ public:
 
         // Create NVRTC program and compile
         nvrtcProgram program;
-        DG_NVRTC_CHECK(nvrtcCreateProgram(&program, code.c_str(), "kernel.cu", 0, nullptr, nullptr));
+        K_NVRTC_CHECK(nvrtcCreateProgram(&program, code.c_str(), "kernel.cu", 0, nullptr, nullptr));
         const auto& compile_result =
             nvrtcCompileProgram(program, static_cast<int>(option_cstrs.size()), option_cstrs.data());
 
         // Get and print compiler log
         size_t log_size;
-        DG_NVRTC_CHECK(nvrtcGetProgramLogSize(program, &log_size));
+        K_NVRTC_CHECK(nvrtcGetProgramLogSize(program, &log_size));
         if (get_env<int>("DG_JIT_DEBUG", 0) or compile_result != NVRTC_SUCCESS) {
             if (compile_result != NVRTC_SUCCESS)
-                DG_HOST_ASSERT(log_size > 1);
+                K_HOST_ASSERT(log_size > 1);
             if (log_size > 1) {
                 std::string compilation_log(log_size, '\0');
-                DG_NVRTC_CHECK(nvrtcGetProgramLog(program, compilation_log.data()));
+                K_NVRTC_CHECK(nvrtcGetProgramLog(program, compilation_log.data()));
                 printf("NVRTC log: %s\n", compilation_log.c_str());
             }
         }
 
         // Get CUBIN size and data
         size_t cubin_size;
-        DG_NVRTC_CHECK(nvrtcGetCUBINSize(program, &cubin_size));
+        K_NVRTC_CHECK(nvrtcGetCUBINSize(program, &cubin_size));
         std::string cubin_data(cubin_size, '\0');
-        DG_NVRTC_CHECK(nvrtcGetCUBIN(program, cubin_data.data()));
+        K_NVRTC_CHECK(nvrtcGetCUBIN(program, cubin_data.data()));
 
         // Write into the file system
         put(cubin_path, cubin_data);
 
         // Cleanup
-        DG_NVRTC_CHECK(nvrtcDestroyProgram(&program));
+        K_NVRTC_CHECK(nvrtcDestroyProgram(&program));
     }
 };
 
@@ -283,4 +283,4 @@ static auto compiler = LazyInit<Compiler>([]() -> std::shared_ptr<Compiler> {
     }
 });
 
-} // namespace deep_gemm
+} // namespace kernels

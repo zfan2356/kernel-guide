@@ -5,7 +5,7 @@
 #include "../utils/exception.hpp"
 #include "../utils/lazy_init.hpp"
 
-namespace deep_gemm {
+namespace kernels {
 
 class DeviceRuntime {
     int num_sms = 0, tc_util = 0;
@@ -40,7 +40,7 @@ public:
     }
 
     void set_num_sms(const int& new_num_sms) {
-        DG_HOST_ASSERT(0 <= new_num_sms and new_num_sms <= get_prop()->multiProcessorCount);
+        K_HOST_ASSERT(0 <= new_num_sms and new_num_sms <= get_prop()->multiProcessorCount);
         num_sms = new_num_sms;
     }
 
@@ -51,7 +51,7 @@ public:
     }
 
     void set_tc_util(const int& new_tc_util) {
-        DG_HOST_ASSERT(0 <= new_tc_util and new_tc_util <= 100);
+        K_HOST_ASSERT(0 <= new_tc_util and new_tc_util <= 100);
         tc_util = new_tc_util;
     }
 
@@ -62,4 +62,4 @@ public:
 
 static auto device_runtime = LazyInit<DeviceRuntime>([]() { return std::make_shared<DeviceRuntime>(); });
 
-} // namespace deep_gemm
+} // namespace kernels
