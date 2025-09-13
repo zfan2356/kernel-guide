@@ -24,7 +24,7 @@ struct LaunchArgs {
 
 class KernelRuntime final {
 public:
-    static std::filesystem::path cuda_home;
+    inline static std::filesystem::path cuda_home;
 
     LibraryHandle library;
     KernelHandle kernel;
@@ -67,8 +67,6 @@ public:
         unload_library(library);
     }
 };
-
-K_DECLARE_STATIC_VAR_IN_CLASS(KernelRuntime, cuda_home);
 
 template <typename Derived> class LaunchRuntime {
 public:

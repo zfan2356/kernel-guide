@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdio>
+#include <cuda_runtime.h>
 
 namespace kernels {
 __global__ __launch_bounds__(1, 1) void hello_world_impl() {

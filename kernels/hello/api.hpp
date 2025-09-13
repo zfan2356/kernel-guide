@@ -16,9 +16,9 @@ public:
     static std::string generate_impl(const Args& args) {
         return fmt::format(
             R"(
-    #include <kernels/hello/hello.cuh>
+    #include <kernels/include/hello/hello.cuh>
     
-    using namespace kernels::hello;
+    using namespace kernels;
     
     static void __instantiate_kernel() {{
         auto ptr = reinterpret_cast<void*>(&hello_world_impl);
