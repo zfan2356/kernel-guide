@@ -27,7 +27,7 @@ public:
 
     static std::string get_library_version() {
         std::stringstream ss;
-        for (const auto& f : collect_files(library_include_path / "deep_gemm")) {
+        for (const auto& f : collect_files(library_include_path)) {
             std::ifstream in(f, std::ios::binary);
             ss << in.rdbuf();
         }
@@ -52,10 +52,7 @@ public:
         K_HOST_ASSERT(not library_version.empty());
 
         // Cache settings
-        cache_dir_path = std::filesystem::path(get_env<std::string>("HOME")) / ".deep_gemm";
-        if (const auto& env_cache_dir_path = get_env<std::string>("DG_JIT_CACHE_DIR"); not env_cache_dir_path.empty())
-            cache_dir_path = env_cache_dir_path;
-
+        cache_dir_path = std::filesystem::path(get_env<std::string>("HOME")) / ".kernels";
         // The compiler flags applied to all derived compilers
         signature = "unknown-compiler";
         flags = fmt::format("-std=c++{} --diag-suppress=39,161,174,177,186,940 "

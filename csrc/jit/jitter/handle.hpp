@@ -12,7 +12,7 @@ using KernelHandle = CUfunction;
 using LaunchConfigHandle = CUlaunchConfig;
 using LaunchAttrHandle = CUlaunchAttribute;
 
-#    define K_CUDA_UNIFIED_CHECK K_CUDA_DRIVER_CHECK
+#define K_CUDA_UNIFIED_CHECK K_CUDA_DRIVER_CHECK
 
 static KernelHandle load_kernel(const std::filesystem::path& cubin_path, const std::string& func_name,
                                 LibraryHandle* library_opt = nullptr) {

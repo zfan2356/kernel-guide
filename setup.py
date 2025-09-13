@@ -10,11 +10,11 @@ from torch.utils.cpp_extension import CUDAExtension, CUDA_HOME
 current_dir = os.path.dirname(os.path.realpath(__file__))
 cxx_flags = ['-std=c++20', '-O3', '-fPIC', '-Wno-psabi', '-Wno-deprecated-declarations',
              f'-D_GLIBCXX_USE_CXX11_ABI={int(torch.compiled_with_cxx11_abi())}']
-sources = ['kernels/python_api.cpp']
+sources = ['csrc/python_api.cpp']
 build_include_dirs = [
     f'{CUDA_HOME}/include',
     f'{CUDA_HOME}/include/cccl',
-    'kernels/csrc',
+    'kernels/include',
     '3rd/fmt/include',
     'prototype',
 ]

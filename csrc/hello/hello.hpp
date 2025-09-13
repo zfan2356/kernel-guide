@@ -1,9 +1,9 @@
 #pragma once
 
 #include <pybind11/pybind11.h>
-#include "../../jit/jitter/kernel_runtime.hpp"
-#include "../../jit/jitter/handle.hpp"
-#include "../../jit/jitter/compiler.hpp"
+#include "../jit/jitter/kernel_runtime.hpp"
+#include "../jit/jitter/handle.hpp"
+#include "../jit/jitter/compiler.hpp"
 
 namespace kernels {
 
@@ -16,9 +16,9 @@ public:
     static std::string generate_impl(const Args& args) {
         return fmt::format(
             R"(
-    #include <kernels/include/hello/hello.cuh>
+    #include <hello/hello.cuh>
     
-    using namespace kernels;
+    using namespace kernels::hello;
     
     static void __instantiate_kernel() {{
         auto ptr = reinterpret_cast<void*>(&hello_world_impl);
@@ -33,6 +33,9 @@ public:
 
 namespace hello {
 static void hello_world() {
+    // Ensure CUDA device is set
+    cudaSetDevice(0);
+    
     const HelloWorldRuntime::Args args {
         .launch_args = LaunchArgs(1, 1),
     };

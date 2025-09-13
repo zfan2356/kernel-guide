@@ -1,7 +1,9 @@
 #include <pybind11/pybind11.h>
 #include <torch/python.h>
+#include <filesystem>
 
-#include "hello/api.hpp"
+#include "hello/hello.hpp"
+#include "runtime/runtime.hpp"
 
 #ifndef TORCH_EXTENSION_NAME
 #define TORCH_EXTENSION_NAME kernels_cpp 
@@ -11,5 +13,6 @@
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "Kernels C++ library";
 
+    kernels::runtime::register_apis(m);
     kernels::hello::register_apis(m);
 }
