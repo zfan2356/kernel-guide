@@ -2,8 +2,8 @@
 #include <torch/python.h>
 #include <filesystem>
 
-#include "hello/hello.hpp"
-#include "runtime/runtime.hpp"
+#include "apis/hello.hpp"
+#include "apis/runtime.hpp"
 
 #ifndef TORCH_EXTENSION_NAME
 #define TORCH_EXTENSION_NAME kernels_cpp 

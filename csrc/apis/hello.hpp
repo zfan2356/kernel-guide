@@ -1,9 +1,9 @@
 #pragma once
 
 #include <pybind11/pybind11.h>
-#include "../jit/jitter/kernel_runtime.hpp"
-#include "../jit/jitter/handle.hpp"
-#include "../jit/jitter/compiler.hpp"
+#include "../jitter/kernel_runtime.hpp"
+#include "../jitter/handle.hpp"
+#include "../jitter/compiler.hpp"
 
 namespace kernels {
 

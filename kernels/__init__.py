@@ -8,11 +8,8 @@ from kernels_cpp import (
 
 # Initialize CPP modules
 def _find_cuda_home() -> str:
-    # TODO: reuse PyTorch API later
-    # For some PyTorch versions, the original `_find_cuda_home` will initialize CUDA, which is incompatible with process forks
     cuda_home = os.environ.get('CUDA_HOME') or os.environ.get('CUDA_PATH')
     if cuda_home is None:
-        # noinspection PyBroadException
         try:
             with open(os.devnull, 'w') as devnull:
                 nvcc = subprocess.check_output(['which', 'nvcc'], stderr=devnull).decode().rstrip('\r\n')

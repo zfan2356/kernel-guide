@@ -3,8 +3,8 @@
 #include <cuda_runtime.h>
 #include <pybind11/pybind11.h>
 #include <string>
-#include "../jit/jitter/compiler.hpp"
-#include "../jit/jitter/kernel_runtime.hpp"
+#include "../jitter/compiler.hpp"
+#include "../jitter/kernel_runtime.hpp"
 
 namespace kernels {
 
