@@ -58,8 +58,7 @@ public:
         flags = fmt::format("-std=c++{} --diag-suppress=39,161,174,177,186,940 "
                             "--ptxas-options=--register-usage-level=10",
                             get_env<int>("DG_JIT_CPP_STANDARD", 20));
-        if (get_env("DG_JIT_DEBUG", 0) or get_env("DG_JIT_PTXAS_VERBOSE", 0))
-            flags += " --ptxas-options=--verbose";
+        flags += " --ptxas-options=--verbose";
         if (get_env("DG_JIT_WITH_LINEINFO", 0))
             flags += " -Xcompiler -rdynamic -lineinfo";
     }
@@ -116,9 +115,13 @@ public:
                          const std::filesystem::path& cubin_path) const = 0;
 };
 
+// NOLINTNEXTLINE(misc-definitions-in-headers)
 K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_root_path);
+// NOLINTNEXTLINE(misc-definitions-in-headers)
 K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_include_path);
+// NOLINTNEXTLINE(misc-definitions-in-headers)
 K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, cuda_home);
+// NOLINTNEXTLINE(misc-definitions-in-headers)
 K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_version);
 
 class NVCCCompiler final : public Compiler {
@@ -170,17 +173,14 @@ public:
         // Compile
         const auto& command =
             fmt::format("{} {} -o {} {}", nvcc_path.c_str(), code_path.c_str(), cubin_path.c_str(), flags);
-        if (get_env("DG_JIT_DEBUG", 0) or get_env("DG_JIT_PRINT_COMPILER_COMMAND", 0))
-            printf("Running NVCC command: %s\n", command.c_str());
+        printf("Running NVCC command: %s\n", command.c_str());
         const auto& [return_code, output] = call_external_command(command);
         if (return_code != 0) {
             printf("NVCC compilation failed: %s\n", output.c_str());
             K_HOST_ASSERT(false and "NVCC compilation failed");
         }
 
-        // Print PTXAS log
-        if (get_env("DG_JIT_DEBUG", 0) or get_env("DG_JIT_PTXAS_VERBOSE", 0))
-            printf("%s", output.c_str());
+        printf("%s", output.c_str());
     }
 };
 
@@ -203,8 +203,7 @@ public:
         std::string pch_flags;
         if (major > 12 or minor >= 8) {
             pch_flags = "--pch ";
-            if (get_env<int>("DG_JIT_DEBUG", 0))
-                pch_flags += "--pch-verbose=true ";
+            pch_flags += "--pch-verbose=true ";
         }
 
         // Override the compiler flags

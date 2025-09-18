@@ -17,9 +17,9 @@ public:
         return fmt::format(
             R"(
     #include <hello/hello.cuh>
-    
+
     using namespace kernels::hello;
-    
+
     static void __instantiate_kernel() {{
         auto ptr = reinterpret_cast<void*>(&hello_world_impl);
     }};
@@ -32,21 +32,21 @@ public:
 };
 
 namespace hello {
-static void hello_world() {
-    // Ensure CUDA device is set
-    cudaSetDevice(0);
-    
-    const HelloWorldRuntime::Args args {
-        .launch_args = LaunchArgs(1, 1),
-    };
-    const auto& code = HelloWorldRuntime::generate(args);
-    const auto& runtime = compiler->build("hello_world", code);
-    HelloWorldRuntime::launch(runtime, args);
-}
+    static void hello_world() {
+        // Ensure CUDA device is set
+        cudaSetDevice(0);
 
-static void register_apis(pybind11::module_& m) {
-    m.def("hello_world", &hello_world);
-}
+        const HelloWorldRuntime::Args args{
+            .launch_args = LaunchArgs(1, 1),
+        };
+        const auto& code = HelloWorldRuntime::generate(args);
+        const auto& runtime = compiler->build("hello_world", code);
+        HelloWorldRuntime::launch(runtime, args);
+    }
+
+    static void register_apis(pybind11::module_& m) {
+        m.def("hello_world", &hello_world);
+    }
 
 } // namespace hello
 } // namespace kernels
