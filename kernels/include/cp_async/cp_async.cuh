@@ -136,9 +136,9 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         // it is not a good way, but it is enough to show the approach to use cp.async
         uint32_t glo_x = offset / (BlockN / 2), glo_y = offset % (BlockN / 2) * 2;
         uint32_t global_offs = scheduler.global_offs(m * BlockM + glo_x, n * BlockN + glo_y);
-        sync::CpAsync::call<bytes, sync::CpAsync::CacheOperator::OpCG>(smem_x[stage_id][runtime::warpid()] + offset,
-                                                                       x + global_offs);
-        sync::CpAsync::commit_group();
+        async::CpAsync::call<bytes, async::CpAsync::CacheOperator::OpCG>(smem_x[stage_id][runtime::warpid()] + offset,
+                                                                         x + global_offs);
+        async::CpAsync::commit_group();
     };
 #elif defined(USE_WAY_2)
     // the secound way is, we use unroll for loop to load data
@@ -156,10 +156,10 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
              offset += NumElemPerThread * 32) {
             uint32_t glo_x = offset / (BlockN / 2), glo_y = offset % (BlockN / 2) * 2;
             uint32_t global_offs = scheduler.global_offs(m * BlockM + glo_x, n * BlockN + glo_y);
-            sync::CpAsync::call<bytes, sync::CpAsync::CacheOperator::OpCG>(smem_x[stage_id][runtime::warpid()] + offset,
-                                                                           x + global_offs);
+            async::CpAsync::call<bytes, async::CpAsync::CacheOperator::OpCG>(
+                smem_x[stage_id][runtime::warpid()] + offset, x + global_offs);
         }
-        sync::CpAsync::commit_group();
+        async::CpAsync::commit_group();
     };
 #endif
     uint32_t m_idx, n_idx;
@@ -178,7 +178,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         // 0 means that wait all the async load instructions
         // in the docs says that there is no ordering guarantee between two cp.async operations
         // so, we need wait all the async load instructions
-        sync::CpAsync::wait_group<0>();
+        async::CpAsync::wait_group<0>();
 
         if (scheduler.next_work_tile(next_m_idx, next_n_idx)) {
             // we can before compute the current tile data, prefetch the next tile data
