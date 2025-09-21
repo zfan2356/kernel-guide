@@ -9,8 +9,6 @@ namespace kernels::cpasync {
 using namespace kernels::prototype;
 using bf16_2 = __nv_bfloat162;
 
-#define USE_WAY_2 1
-
 template <uint32_t NumBlocks, uint32_t NumWarpsPerBlock, uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN>
 __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_bfloat16* x, __nv_bfloat16* out) {
     /*
@@ -88,15 +86,9 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
     // because we use 2 packd bfloat16 to each thread, so we need divide by 2
     // when block is 16 * 16, it means 8 elements can be loaded to each thread
     // and we use 4 registers to hold the data
-    // in the first way, we dynamically calculate the number of elements per thread
-    // in the second way, we use a fixed number of elements per thread, and then use unroll for loop to load data
+    // we use a fixed number of elements per thread, and then use unroll for loop to load data
     // the second way is more flexible, the first way leads to register overflow if block is too large
-#ifdef USE_WAY_1
-    constexpr static uint32_t NumElemPerThread = BlockM * BlockN / 2 / 32;
-#elif defined(USE_WAY_2)
     constexpr static uint32_t NumElemPerThread = 4;
-#endif
-
     // a struct for register to manage compute and load/store
     struct Register {
         bf16_2 regs[NumElemPerThread];
@@ -120,28 +112,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         }
     } regs;
 
-#ifdef USE_WAY_1
-    auto launch_cp_async = [scheduler, x](uint32_t m, uint32_t n, int stage_id) {
-        static_assert(BlockM * (BlockN / 2) % 32 == 0, "BlockM * BlockN must be divisible by 32");
-        static_assert(BlockN % (NumElemPerThread * 2) == 0, "BlockN must divide by NumElemPerThread * 2");
-        constexpr uint32_t bytes = NumElemPerThread * sizeof(bf16_2);
-        uint32_t offset = runtime::laneid() * NumElemPerThread;
-        // smem_x offset is an inner offset and is easy to calculate,
-        // but x offset is a global offset, so we need to consider inner to outer mapping.
-        // A clear and scalable approach is thinking about the mapping between inner and outer offset.
-        // not caculate the global offset directly.
-        // but there is a issue that if we want load a non-contiguous data tile, leads to wrong
-        // so, BlockN must divide by NumElemPerThread * 2
-        // in this kernel, num elem per thread is 4, so BlockN must divide by 8
-        // it is not a good way, but it is enough to show the approach to use cp.async
-        uint32_t glo_x = offset / (BlockN / 2), glo_y = offset % (BlockN / 2) * 2;
-        uint32_t global_offs = scheduler.global_offs(m * BlockM + glo_x, n * BlockN + glo_y);
-        async::CpAsync::call<bytes, async::CpAsync::CacheOperator::OpCG>(smem_x[stage_id][runtime::warpid()] + offset,
-                                                                         x + global_offs);
-        async::CpAsync::commit_group();
-    };
-#elif defined(USE_WAY_2)
-    // the secound way is, we use unroll for loop to load data
+    // we use unroll for loop to load data
     // so we will fix NumElemPerThread, and then use for loop
     // the advantage is that we can control the number of registers per thread
     // and not use static_assert to make sure BlockN must divide by NumElemPerThread * 2
@@ -151,7 +122,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         static_assert((BlockM * (BlockN / 2)) % (NumElemPerThread * 32) == 0,
                       "BlockM * BlockN must be divisible by NumElemPerThread * 32");
         constexpr uint32_t bytes = NumElemPerThread * sizeof(bf16_2);
-#    pragma unroll
+#pragma unroll
         for (uint32_t offset = runtime::laneid() * NumElemPerThread; offset < BlockM * BlockN / 2;
              offset += NumElemPerThread * 32) {
             uint32_t glo_x = offset / (BlockN / 2), glo_y = offset % (BlockN / 2) * 2;
@@ -161,18 +132,17 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         }
         async::CpAsync::commit_group();
     };
-#endif
     uint32_t m_idx, n_idx;
     uint32_t next_m_idx, next_n_idx;
     while (scheduler.current_work_tile(m_idx, n_idx)) {
+#ifdef USE_SYNC_VERSION
+        launch_cp_async_v2(m_idx, n_idx, scheduler.stage_id);
+        async::CpAsync::wait_group<0>();
+#else
         if (scheduler.is_first_step) {
             // we need prefetch the first tile data to shared memory
             // noticed that cp.async is thread-level instruction, so we need load data to each thread
-#ifdef USE_WAY_1
-            launch_cp_async(m_idx, n_idx, scheduler.stage_id);
-#elif defined(USE_WAY_2)
             launch_cp_async_v2(m_idx, n_idx, scheduler.stage_id);
-#endif
         }
         // wait the current tile data from shared memory
         // 0 means that wait all the async load instructions
@@ -183,24 +153,12 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         if (scheduler.next_work_tile(next_m_idx, next_n_idx)) {
             // we can before compute the current tile data, prefetch the next tile data
             // use cp.async
-#ifdef USE_WAY_1
-            launch_cp_async(next_m_idx, next_n_idx, scheduler.next_stage());
-#elif defined(USE_WAY_2)
             launch_cp_async_v2(next_m_idx, next_n_idx, scheduler.next_stage());
-#endif
         }
         // load data from shared memory to register, now problem is warp-level
         // we need load data from shared memory to register
-
-#ifdef USE_WAY_1
-        uint32_t thread_offs = runtime::laneid() * NumElemPerThread;
-        regs.load(smem_x[scheduler.stage_id][runtime::warpid()], thread_offs);
-        regs.compute();
-        uint32_t glo_x = thread_offs / (BlockN / 2), glo_y = thread_offs % (BlockN / 2) * 2;
-        uint32_t global_offs = scheduler.global_offs(m_idx * BlockM + glo_x, n_idx * BlockN + glo_y);
-        regs.store(out, global_offs);
-#elif defined(USE_WAY_2)
-#    pragma unroll
+#endif
+#pragma unroll
         for (uint32_t i = runtime::laneid() * NumElemPerThread; i < BlockM * BlockN / 2; i += NumElemPerThread * 32) {
             regs.load(smem_x[scheduler.stage_id][runtime::warpid()], i);
             regs.compute();
@@ -208,7 +166,6 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
             uint32_t global_offs = scheduler.global_offs(m_idx * BlockM + glo_x, n_idx * BlockN + glo_y);
             regs.store(out, global_offs);
         }
-#endif
         scheduler.step();
     }
 }
