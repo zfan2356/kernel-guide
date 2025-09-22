@@ -33,4 +33,25 @@ __device__ __forceinline__ uint32_t elect_one_sync() {
     return pred;
 }
 
+template <typename T> __device__ __host__ __forceinline__ static constexpr T max(T a, T b) {
+    return a > b ? a : b;
+}
+
+// use [warpsbegin, warpsend) to define the group
+template <uint32_t WarpsBegin, uint32_t WarpsEnd> struct Group {
+    constexpr static auto NumWarps = WarpsEnd - WarpsBegin;
+    constexpr static auto GroupWarps = NumWarps;
+    constexpr static auto GroupThreads = NumWarps * 32;
+    __device__ __forceinline__ static int laneid() {
+        return max(0u, threadIdx.x - WarpsBegin * 32) % GroupThreads;
+    }
+    __device__ __forceinline__ static int warpid() {
+        return laneid() / 32;
+    }
+
+    __device__ __forceinline__ static void sync(int id) {
+        asm volatile("bar.sync %0, %1;\n" ::"r"(id), "n"(GroupThreads));
+    }
+};
+
 } // namespace kernels::prototype::runtime
