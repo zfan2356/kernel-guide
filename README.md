@@ -23,7 +23,7 @@ python -m unittest tests/test_hello.py
 
 ## Kernel Lists
 
-- [ ] CP Async
+- [x] CP Async
 
 - [ ] TMA Swizzle
 
