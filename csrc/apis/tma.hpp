@@ -33,7 +33,7 @@ public:
     static void __instantiate_kernel() {{
         auto ptr = reinterpret_cast<void*>(&tma_impl<
         {}, {},
-        {}, {}, {}
+        {}, {}, {},
         {}, {}, {}, {}
         >);
     }};

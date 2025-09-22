@@ -94,7 +94,7 @@ struct TMA {
                                "l"(__cvta_generic_to_shared(&bar)));
             }
         } else {
-            static_assert(false, "Only support 1D tensor map for now");
+            printf("Not Implemented\n");
         }
     }
 
