@@ -50,11 +50,12 @@ struct MBarrier {
         uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&sem));
         int result;
         asm volatile("{\n"
-                     ".reg .pred                P1;\n"
-                     "mbarrier.test_wait.parity.shared::cta.b64 P1, [%0], %1;\n"
-                     "selp.u32 %0,1,0,P1;\n"
-                     "}\n" ::"r"(mbar_ptr),
-                     "r"(phase));
+                     ".reg .pred P1;\n"
+                     "mbarrier.test_wait.parity.shared::cta.b64 P1, [%1], %2;\n"
+                     "selp.u32 %0,1,0,P1;"
+                     "}\n"
+                     : "=r"(result)
+                     : "r"(mbar_ptr), "r"(phase));
         return result;
     }
 

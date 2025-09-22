@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from kernels_cpp import cp_async_test, hello_world, init
+from kernels_cpp import cp_async_test, hello_world, init, tma_test
 
 
 # Initialize CPP modules

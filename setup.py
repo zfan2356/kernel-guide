@@ -2,10 +2,10 @@ import os
 import shutil
 import subprocess
 
-import setuptools
 import torch
-from setuptools import find_packages
+from setuptools import find_packages, setup
 from setuptools.command.build_py import build_py
+from setuptools.command.develop import develop
 from torch.utils.cpp_extension import CUDA_HOME, CUDAExtension
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -29,46 +29,86 @@ build_libraries = ["cuda", "cudart", "nvrtc"]
 build_library_dirs = [f"{CUDA_HOME}/lib64", f"{CUDA_HOME}/lib64/stubs"]
 
 
-class CustomBuildPy(build_py):
+class PostDevelopCommand(develop):
+    """Handle development mode (pip install -e .)"""
+
     def run(self):
-        # First, prepare the include directories
-        self.prepare_includes()
+        super().run()
+        self._make_prototype_symlinks()
 
-        # Finally, run the regular build
-        build_py.run(self)
+    @staticmethod
+    def _make_prototype_symlinks():
+        """Create symlinks from prototype/include to kernels/include"""
+        prototype_include_dir = os.path.join(current_dir, "prototype/include")
+        kernels_include_dir = os.path.join(current_dir, "kernels/include")
 
-    def prepare_includes(self):
-        # Create kernels/include directory
-        kernels_include_dst = os.path.join(self.build_lib, "kernels/include")
-        os.makedirs(kernels_include_dst, exist_ok=True)
+        if not os.path.exists(prototype_include_dir):
+            return
 
-        # First, copy kernels/include contents
+        for item in os.listdir(prototype_include_dir):
+            src_item = os.path.join(prototype_include_dir, item)
+            dst_item = os.path.join(kernels_include_dir, item)
+
+            # Remove existing directory or symlink
+            if os.path.exists(dst_item) or os.path.islink(dst_item):
+                if os.path.islink(dst_item):
+                    os.unlink(dst_item)
+                elif os.path.isdir(dst_item):
+                    shutil.rmtree(dst_item)
+                else:
+                    os.remove(dst_item)
+
+            # Create symlink with relative path
+            rel_path = os.path.relpath(src_item, kernels_include_dir)
+            if os.path.isdir(src_item):
+                os.symlink(rel_path, dst_item, target_is_directory=True)
+                print(f"Created directory symlink: {dst_item} -> {rel_path}")
+            else:
+                os.symlink(rel_path, dst_item)
+                print(f"Created file symlink: {dst_item} -> {rel_path}")
+
+
+class CustomBuildPy(build_py):
+    """Handle regular install (pip install .)"""
+
+    def run(self):
+        self._prepare_includes()
+        super().run()
+
+    def _prepare_includes(self):
+        """Copy prototype/include contents to build directory"""
+        build_include_dir = os.path.join(self.build_lib, "kernels/include")
+        os.makedirs(build_include_dir, exist_ok=True)
+
+        # Copy kernels/include contents first
         kernels_src = os.path.join(current_dir, "kernels/include")
         if os.path.exists(kernels_src):
             for item in os.listdir(kernels_src):
                 src_item = os.path.join(kernels_src, item)
-                dst_item = os.path.join(kernels_include_dst, item)
+                dst_item = os.path.join(build_include_dir, item)
                 if os.path.exists(dst_item):
-                    if os.path.isdir(dst_item):
+                    (
                         shutil.rmtree(dst_item)
-                    else:
-                        os.remove(dst_item)
+                        if os.path.isdir(dst_item)
+                        else os.remove(dst_item)
+                    )
                 if os.path.isdir(src_item):
                     shutil.copytree(src_item, dst_item)
                 else:
                     shutil.copy2(src_item, dst_item)
 
-        # Then, copy prototype/include contents to kernels/include
+        # Copy prototype/include contents (both directories and files)
         prototype_src = os.path.join(current_dir, "prototype/include")
         if os.path.exists(prototype_src):
             for item in os.listdir(prototype_src):
                 src_item = os.path.join(prototype_src, item)
-                dst_item = os.path.join(kernels_include_dst, item)
+                dst_item = os.path.join(build_include_dir, item)
                 if os.path.exists(dst_item):
-                    if os.path.isdir(dst_item):
+                    (
                         shutil.rmtree(dst_item)
-                    else:
-                        os.remove(dst_item)
+                        if os.path.isdir(dst_item)
+                        else os.remove(dst_item)
+                    )
                 if os.path.isdir(src_item):
                     shutil.copytree(src_item, dst_item)
                 else:
@@ -83,8 +123,7 @@ if __name__ == "__main__":
     except:
         revision = ""
 
-    # noinspection PyTypeChecker
-    setuptools.setup(
+    setup(
         name="kernel_guide",
         version="1.0.0" + revision,
         packages=find_packages("."),
@@ -108,6 +147,7 @@ if __name__ == "__main__":
         ],
         zip_safe=False,
         cmdclass={
+            "develop": PostDevelopCommand,
             "build_py": CustomBuildPy,
         },
     )

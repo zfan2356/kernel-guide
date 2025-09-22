@@ -5,6 +5,7 @@
 #include "apis/hello.hpp"
 #include "apis/runtime.hpp"
 #include "apis/cp_async.hpp"
+#include "apis/tma.hpp"
 
 #ifndef TORCH_EXTENSION_NAME
 #    define TORCH_EXTENSION_NAME kernels_cpp
@@ -17,4 +18,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     kernels::runtime::register_apis(m);
     kernels::hello::register_apis(m);
     kernels::cpasync::register_apis(m);
+    kernels::tma::register_apis(m);
 }
