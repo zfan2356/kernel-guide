@@ -7,6 +7,7 @@
 #include <nvrtc.h>
 #include <regex>
 #include <string>
+#include <vector>
 
 #include "../utils/exception.hpp"
 #include "../utils/format.hpp"
@@ -22,6 +23,7 @@ class Compiler {
 public:
     static std::filesystem::path library_root_path;
     static std::filesystem::path library_include_path;
+    static std::vector<std::filesystem::path> custom_include_paths;
     static std::filesystem::path cuda_home;
     static std::string library_version;
 
@@ -34,8 +36,16 @@ public:
         return get_hex_digest(ss.str());
     }
 
-    static void prepare_init(const std::string& library_root_path, const std::string& cuda_home_path_by_python) {
+    static void prepare_init(const std::string& library_root_path, const std::string& cuda_home_path_by_python,
+                             const std::vector<std::string>& custom_include_paths = {}) {
         Compiler::library_root_path = library_root_path;
+        if (!custom_include_paths.empty()) {
+            // Use custom include paths
+            for (const auto& path : custom_include_paths) {
+                Compiler::custom_include_paths.push_back(path);
+            }
+        }
+        // Use default include path
         Compiler::library_include_path = Compiler::library_root_path / "include";
         Compiler::cuda_home = cuda_home_path_by_python;
         Compiler::library_version = get_library_version();
@@ -91,8 +101,10 @@ public:
             cache_dir_path / "cache" / fmt::format("kernel.{}.{}", name, get_hex_digest(kernel_signature));
 
         // Hit the runtime cache
-        if (const auto& runtime = kernel_runtime_cache->get(dir_path); runtime != nullptr)
+        if (const auto& runtime = kernel_runtime_cache->get(dir_path); runtime != nullptr) {
+            printf("Hit the runtime cache: %s\n", dir_path.c_str());
             return runtime;
+        }
 
         // Create the kernel directory
         make_dirs(dir_path);
@@ -119,6 +131,8 @@ public:
 K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_root_path);
 // NOLINTNEXTLINE(misc-definitions-in-headers)
 K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, library_include_path);
+// NOLINTNEXTLINE(misc-definitions-in-headers)
+K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, custom_include_paths);
 // NOLINTNEXTLINE(misc-definitions-in-headers)
 K_DECLARE_STATIC_VAR_IN_CLASS(Compiler, cuda_home);
 // NOLINTNEXTLINE(misc-definitions-in-headers)
@@ -150,18 +164,29 @@ public:
     NVCCCompiler() {
         // Override the compiler signature
         nvcc_path = cuda_home / "bin" / "nvcc";
-        if (const auto& env_nvcc_path = get_env<std::string>("DG_JIT_NVCC_COMPILER"); not env_nvcc_path.empty())
+        if (const auto& env_nvcc_path = get_env<std::string>("DG_JIT_NVCC_COMPILER"); not env_nvcc_path.empty()) {
             nvcc_path = env_nvcc_path;
+        }
         const auto& [nvcc_major, nvcc_minor] = get_nvcc_version();
         signature = fmt::format("NVCC{}.{}", nvcc_major, nvcc_minor);
+
+        std::string include_dirs;
+        if (!custom_include_paths.empty()) {
+            // Use custom include paths
+            for (const auto& path : custom_include_paths) {
+                include_dirs += fmt::format("-I{} ", path.string());
+            }
+        }
+        // Use default include path
+        include_dirs += fmt::format("-I{} ", library_include_path.string());
 
         // The override the compiler flags
         // Only NVCC >= 12.9 supports arch-specific family suffix
         const auto& arch = device_runtime->get_arch(false, nvcc_major > 12 or nvcc_minor >= 9);
-        flags = fmt::format("{} -I{} --gpu-architecture=sm_{} "
+        flags = fmt::format("{} {} --gpu-architecture=sm_{} "
                             "--compiler-options=-fPIC,-O3,-fconcepts,-Wno-deprecated-declarations,-Wno-abi "
                             "-cubin -O3 --expt-relaxed-constexpr --expt-extended-lambda",
-                            flags, library_include_path.c_str(), arch);
+                            flags, include_dirs, arch);
     }
 
     void compile(const std::string& code, const std::filesystem::path& dir_path,
@@ -184,99 +209,7 @@ public:
     }
 };
 
-class NVRTCCompiler final : public Compiler {
-public:
-    NVRTCCompiler() {
-        // Override the compiler signature
-        int major, minor;
-        K_NVRTC_CHECK(nvrtcVersion(&major, &minor));
-        signature = fmt::format("NVRTC{}.{}", major, minor);
-        K_HOST_ASSERT((major > 12 or (major == 12 and minor >= 3)) and "NVRTC version should be >= 12.3");
-
-        // Build include directories list
-        std::string include_dirs;
-        include_dirs += fmt::format("-I{} ", library_include_path.string());
-        include_dirs += fmt::format("-I{} ", (cuda_home / "include").string());
-
-        // Add PCH support for version 12.8 and above
-        // NOTES: PCH is vital for compilation speed
-        std::string pch_flags;
-        if (major > 12 or minor >= 8) {
-            pch_flags = "--pch ";
-            pch_flags += "--pch-verbose=true ";
-        }
-
-        // Override the compiler flags
-        // Only NVRTC >= 12.9 supports arch-specific family suffix
-        const auto& arch = device_runtime->get_arch(false, major > 12 or minor >= 9);
-        flags = fmt::format("{} {}--gpu-architecture=sm_{} -default-device {}", flags, include_dirs, arch, pch_flags);
-    }
-
-    void compile(const std::string& code, const std::filesystem::path& dir_path,
-                 const std::filesystem::path& cubin_path) const override {
-        // Write the code into the cache directory
-        const auto& code_path = dir_path / "kernel.cu";
-        put(code_path, code);
-
-        // Parse compilation options
-        std::istringstream iss(flags);
-        std::vector<std::string> options;
-        std::string option;
-        while (iss >> option)
-            options.push_back(option);
-
-        // Convert to C-style string array for NVRTC
-        std::vector<const char*> option_cstrs;
-        for (const auto& opt : options)
-            option_cstrs.push_back(opt.c_str());
-
-        // Print compiler command if requested
-        if (get_env<int>("DG_JIT_DEBUG", 0) or get_env<int>("DG_JIT_PRINT_COMPILER_COMMAND", 0)) {
-            printf("Compiling JIT runtime with NVRTC options: ");
-            for (const auto& opt : options)
-                printf("%s ", opt.c_str());
-            printf("\n");
-        }
-
-        // Create NVRTC program and compile
-        nvrtcProgram program;
-        K_NVRTC_CHECK(nvrtcCreateProgram(&program, code.c_str(), "kernel.cu", 0, nullptr, nullptr));
-        const auto& compile_result =
-            nvrtcCompileProgram(program, static_cast<int>(option_cstrs.size()), option_cstrs.data());
-
-        // Get and print compiler log
-        size_t log_size;
-        K_NVRTC_CHECK(nvrtcGetProgramLogSize(program, &log_size));
-        if (get_env<int>("DG_JIT_DEBUG", 0) or compile_result != NVRTC_SUCCESS) {
-            if (compile_result != NVRTC_SUCCESS)
-                K_HOST_ASSERT(log_size > 1);
-            if (log_size > 1) {
-                std::string compilation_log(log_size, '\0');
-                K_NVRTC_CHECK(nvrtcGetProgramLog(program, compilation_log.data()));
-                printf("NVRTC log: %s\n", compilation_log.c_str());
-            }
-        }
-
-        // Get CUBIN size and data
-        size_t cubin_size;
-        K_NVRTC_CHECK(nvrtcGetCUBINSize(program, &cubin_size));
-        std::string cubin_data(cubin_size, '\0');
-        K_NVRTC_CHECK(nvrtcGetCUBIN(program, cubin_data.data()));
-
-        // Write into the file system
-        put(cubin_path, cubin_data);
-
-        // Cleanup
-        K_NVRTC_CHECK(nvrtcDestroyProgram(&program));
-    }
-};
-
-static auto compiler = LazyInit<Compiler>([]() -> std::shared_ptr<Compiler> {
-    if (get_env<int>("DG_JIT_USE_NVRTC", 0)) {
-        return std::make_shared<NVRTCCompiler>();
-    } else {
-        return std::make_shared<NVCCCompiler>();
-    }
-});
+static auto compiler =
+    LazyInit<Compiler>([]() -> std::shared_ptr<Compiler> { return std::make_shared<NVCCCompiler>(); });
 
 } // namespace kernels

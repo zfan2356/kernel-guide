@@ -20,11 +20,11 @@ public:
 };
 
 #ifndef K_STATIC_ASSERT
-#    define K_STATIC_ASSERT(cond, ...) static_assert(cond, __VA_ARGS__)
+    #define K_STATIC_ASSERT(cond, ...) static_assert(cond, __VA_ARGS__)
 #endif
 
 #ifndef K_HOST_ASSERT
-#    define K_HOST_ASSERT(cond)                                                                                        \
+    #define K_HOST_ASSERT(cond)                                                                                        \
         do {                                                                                                           \
             if (not(cond)) {                                                                                           \
                 throw KernelException("Assertion", __FILE__, __LINE__, #cond);                                         \
@@ -33,11 +33,11 @@ public:
 #endif
 
 #ifndef K_HOST_UNREACHABLE
-#    define K_HOST_UNREACHABLE(reason) (throw KernelException("Assertion", __FILE__, __LINE__, reason))
+    #define K_HOST_UNREACHABLE(reason) (throw KernelException("Assertion", __FILE__, __LINE__, reason))
 #endif
 
 #ifndef K_NVRTC_CHECK
-#    define K_NVRTC_CHECK(cmd)                                                                                         \
+    #define K_NVRTC_CHECK(cmd)                                                                                         \
         do {                                                                                                           \
             const auto& e = (cmd);                                                                                     \
             if (e != NVRTC_SUCCESS) {                                                                                  \
@@ -47,7 +47,7 @@ public:
 #endif
 
 #ifndef K_CUDA_DRIVER_CHECK
-#    define K_CUDA_DRIVER_CHECK(cmd)                                                                                   \
+    #define K_CUDA_DRIVER_CHECK(cmd)                                                                                   \
         do {                                                                                                           \
             const auto& e = (cmd);                                                                                     \
             if (e != CUDA_SUCCESS) {                                                                                   \
@@ -61,7 +61,7 @@ public:
 #endif
 
 #ifndef K_CUDA_RUNTIME_CHECK
-#    define K_CUDA_RUNTIME_CHECK(cmd)                                                                                  \
+    #define K_CUDA_RUNTIME_CHECK(cmd)                                                                                  \
         do {                                                                                                           \
             const auto& e = (cmd);                                                                                     \
             if (e != cudaSuccess) {                                                                                    \

@@ -51,13 +51,6 @@ class TestCpAsync(unittest.TestCase):
 
         torch.testing.assert_close(out, ref_out)
 
-        nbytes = x.numel() * x.element_size() * 2
-        t = triton.testing.do_bench(
-            lambda: kernels.cp_async_test(x, out), warmup=10, rep=100
-        )
-
-        print(f"Performance: {nbytes * 1e-9 / t:.2f} TB/s")
-
 
 if __name__ == "__main__":
     unittest.main()

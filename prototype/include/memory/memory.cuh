@@ -97,6 +97,35 @@ template <typename T>
     }
 };
 
+template <typename T>
+    requires std::is_same_v<T, float> || std::is_same_v<T, __nv_bfloat162> struct Move<T, CopyAtom::OpR2S> {
+    // use st.global.cs
+    template <uint32_t N = 1> __device__ __forceinline__ static void move(void* dst, void* src) {
+        char* src_ptr = static_cast<char*>(src);
+        auto dst_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
+        if constexpr (N == 1) {
+            asm volatile("st.weak.shared.cs.b32 [%0], %1;"
+                         :
+                         : "l"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
+                         : "memory");
+        } else if constexpr (N == 2) {
+            asm volatile("st.weak.shared.cs.v2.b32 [%0], {%1, %2};"
+                         :
+                         : "l"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4))
+                         : "memory");
+        } else if constexpr (N == 4) {
+            asm volatile("st.weak.shared.cs.v4.b32 [%0], {%1, %2, %3, %4};"
+                         :
+                         : "l"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4)),
+                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 8)),
+                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 12))
+                         : "memory");
+        }
+    }
+};
+
 
 template <typename T> requires std::is_same_v<T, __nv_bfloat16> struct Move<T, CopyAtom::OpR2G> {
     template <uint32_t N = 1> __device__ __forceinline__ static void move(void* dst, void* src) {

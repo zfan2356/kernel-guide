@@ -4,10 +4,10 @@
 #include <cuda.h>
 #include "../runtime/runtime.cuh"
 #include <cuda_bf16.h>
+#include <cassert>
 
 namespace kernels::prototype::async {
-// Concept to constrain Bytes parameter for cp.async
-// cp-size can only be 4, 8 and 16 bytes
+// Constrain Bytes parameter for cp.async: allowed sizes are 4, 8, and 16 bytes
 template <uint32_t Bytes> concept ValidCpAsyncBytes = (Bytes == 4 || Bytes == 8 || Bytes == 16);
 
 struct CpAsync {
@@ -84,38 +84,33 @@ struct TMA {
     };
 
     template <uint32_t Dim>
-    __device__ __forceinline__ static void load(void* dst, const void* src, uint32_t nbBytes, void* bar) {
+    __device__ __forceinline__ static void load(void* dst, const void* src, uint32_t nBytes, uint64_t* bar_ptr) {
         if constexpr (Dim == 1) {
-            if (runtime::elect_one_sync()) {
-                asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
-                             "[%0], [%1], %2, [%3];\n"
-                             :
-                             : "l"(__cvta_generic_to_shared(dst)), "l"(reinterpret_cast<uint64_t>(src)), "r"(nbBytes),
-                               "l"(__cvta_generic_to_shared(&bar)));
-            }
+            // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
+            assert(nBytes % 16 == 0);
+            uint64_t src_ptr = reinterpret_cast<uint64_t>(src);
+            asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
+                         "[%0], [%1], %2, [%3];\n"
+                         :
+                         : "l"(__cvta_generic_to_shared(dst)), "l"(src_ptr), "r"(nBytes),
+                           "l"(__cvta_generic_to_shared(bar_ptr)));
         } else {
             printf("Not Implemented\n");
         }
     }
 
     __device__ __forceinline__ static void commit_group() {
-        if (runtime::elect_one_sync()) {
-            asm volatile("cp.async.bulk.commit_group;");
-        }
+        asm volatile("cp.async.bulk.commit_group;");
         __syncwarp();
     }
 
     template <int N = 0> __device__ __forceinline__ static void store_async_wait() {
-        if (runtime::elect_one_sync()) {
-            asm volatile("cp.async.bulk.wait_group %0;" : : "n"(N) : "memory");
-        }
+        asm volatile("cp.async.bulk.wait_group %0;" : : "n"(N) : "memory");
         __syncwarp();
     }
 
     template <int N = 0> __device__ __forceinline__ static void read_async_wait() {
-        if (runtime::elect_one_sync()) {
-            asm volatile("cp.async.bulk.wait_group.read %0;" : : "n"(N) : "memory");
-        }
+        asm volatile("cp.async.bulk.wait_group.read %0;" : : "n"(N) : "memory");
         __syncwarp();
     }
 };

@@ -126,7 +126,7 @@ if __name__ == "__main__":
     setup(
         name="kernel_guide",
         version="1.0.0" + revision,
-        packages=find_packages("."),
+        packages=find_packages(".", exclude=["tests"]),
         package_data={
             "kernels": [
                 "include/**/*",

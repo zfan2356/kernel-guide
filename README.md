@@ -25,6 +25,8 @@ python -m unittest tests/test_hello.py
 
 - [x] CP Async
 
+- [ ] ld.matrix + MMA
+
 - [ ] TMA Swizzle
 
 - [ ] Hopper WGMMA

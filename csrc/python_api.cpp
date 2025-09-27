@@ -8,7 +8,7 @@
 #include "apis/tma.hpp"
 
 #ifndef TORCH_EXTENSION_NAME
-#    define TORCH_EXTENSION_NAME kernels_cpp
+    #define TORCH_EXTENSION_NAME kernels_cpp
 #endif
 
 // ReSharper disable once CppParameterMayBeConstPtrOrRef

@@ -51,16 +51,16 @@ namespace tma {
     static void tma_test(const torch::Tensor& x, const torch::Tensor& out) {
         // launch 70 blocks for persistent kernel, and 4 warps to form a warp group
         // which two of them are consumers, and two of them are producers
-        uint32_t num_blocks = 70, num_warps_per_block = 4;
+        uint32_t num_stages = 4, num_consumers = 1, num_producers = 1;
+        uint32_t num_blocks = 70, num_warps_per_block = num_consumers + num_producers;
         const uint32_t m = x.size(0), n = x.size(1);
         const uint32_t block_m = 64, block_n = 64;
-        uint32_t num_stages = 4, num_consumers = 2, num_producers = 2;
 
         K_HOST_ASSERT(m % block_m == 0 && n % block_n == 0);
         K_HOST_ASSERT(m == out.size(0) && n == out.size(1));
         K_HOST_ASSERT(num_consumers + num_producers == num_warps_per_block);
 
-        uint32_t smem_size = num_stages * block_m * block_n * 2 + 1024;
+        uint32_t smem_size = num_stages * block_m * block_n * 2 * 2 + 1024;
         const TMARuntime::Args args{
             .launch_args = LaunchArgs(num_blocks, num_warps_per_block * 32, smem_size),
             .num_blocks = num_blocks,
