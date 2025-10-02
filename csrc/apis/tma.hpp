@@ -96,7 +96,7 @@ namespace tma {
         const cuuint32_t smem_dims[2] = {
             static_cast<cuuint32_t>(smem_inner_dim), static_cast<cuuint32_t>(smem_outer_dim)};
         const cuuint64_t gmem_strides[1] = {
-            static_cast<cuuint64_t>(n * x.element_size()),
+            static_cast<cuuint64_t>(gmem_stride * x.element_size()),
         };
         const cuuint32_t elem_strides[2] = {1, 1};
         K_CUDA_DRIVER_CHECK(cuTensorMapEncodeTiled(&map,
