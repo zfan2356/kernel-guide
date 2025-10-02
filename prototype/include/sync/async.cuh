@@ -16,12 +16,17 @@ struct CpAsync {
         OpCG,
     };
     template <uint32_t Bytes, CacheOperator Op>
-    requires ValidCpAsyncBytes<Bytes> __device__ __forceinline__ static void call(void* dst, const void* src) {
+    requires ValidCpAsyncBytes<Bytes> __device__ __forceinline__ static void call(
+        void* dst, const void* src) {
         uint32_t dst_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
         if constexpr (Op == CacheOperator::OpCG) {
-            asm volatile("cp.async.cg.shared.global [%0], [%1], %2;\n" ::"r"(dst_ptr), "l"(src), "n"(Bytes) : "memory");
+            asm volatile(
+                "cp.async.cg.shared.global [%0], [%1], %2;\n" ::"r"(dst_ptr), "l"(src), "n"(Bytes)
+                : "memory");
         } else {
-            asm volatile("cp.async.ca.shared.global [%0], [%1], %2;\n" ::"r"(dst_ptr), "l"(src), "n"(Bytes) : "memory");
+            asm volatile(
+                "cp.async.ca.shared.global [%0], [%1], %2;\n" ::"r"(dst_ptr), "l"(src), "n"(Bytes)
+                : "memory");
         }
     }
 
@@ -44,16 +49,17 @@ struct CpAsync {
     It utilizes mbarrier synchronization to coordinate threads.
     The implementation here is a group-level TMA, where only one thread in the group
     is responsible for committing the group operation.
-    Since TMA is a specialized hardware component, it is sufficient for a single thread to trigger the operation,
-    similar to how a DMA (Direct Memory Access) controller works.
-    TMA has two types of PTX
+    Since TMA is a specialized hardware component, it is sufficient for a single thread to trigger
+   the operation, similar to how a DMA (Direct Memory Access) controller works. TMA has two types of
+   PTX
     - cp.async.bulk: to async load/store 1d data betwen global and shared memory
     - cp.async.bulk.tensor: to async load/store 3d/4d/5d data betwen global and shared memory
                          need tensor map to describe the shape and layout of the tensor
 */
 struct TMA {
     template <uint32_t Dim>
-    __device__ __forceinline__ static void load(void* dst, const void* src, uint32_t nBytes, uint64_t* bar_ptr) {
+    __device__ __forceinline__ static void load(
+        void* dst, const void* src, uint32_t nBytes, uint64_t* bar_ptr) {
         if constexpr (Dim == 1) {
             // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
             assert(nBytes % 16 == 0);
@@ -61,16 +67,15 @@ struct TMA {
             asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
                          "[%0], [%1], %2, [%3];\n"
                 :
-                : "l"(__cvta_generic_to_shared(dst)),
-                "l"(src_ptr),
-                "r"(nBytes),
+                : "l"(__cvta_generic_to_shared(dst)), "l"(src_ptr), "r"(nBytes),
                 "l"(__cvta_generic_to_shared(bar_ptr)));
         } else {
             printf("Not Implemented\n");
         }
     }
 
-    template <uint32_t Dim> __device__ __forceinline__ static void store(void* dst, const void* src, uint32_t nBytes) {
+    template <uint32_t Dim>
+    __device__ __forceinline__ static void store(void* dst, const void* src, uint32_t nBytes) {
         if constexpr (Dim == 1) {
             // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
             // it seems that cp.async.bulk.global.shared::cta not support mbarrier...

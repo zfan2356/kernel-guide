@@ -9,24 +9,27 @@ namespace kernels::cpasync {
 using namespace kernels::prototype;
 using bf16_2 = __nv_bfloat162;
 
-template <uint32_t NumBlocks, uint32_t NumWarpsPerBlock, uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN>
-__global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_bfloat16* x, __nv_bfloat16* out) {
+template <uint32_t NumBlocks, uint32_t NumWarpsPerBlock, uint32_t M, uint32_t N, uint32_t BlockM,
+    uint32_t BlockN>
+__global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
+    __nv_bfloat16* x, __nv_bfloat16* out) {
     /*
     x: [M, N] bfloat16
     out: [M, N] bfloat16
-    This kernel will copy x into shared memory in block-wise, then apply x to 2 * x + 1, then copy the result to out.
-    we will use cp.async to copy data from shared memory to global memory. and use ld.shared from shared memory to
-    register. to demonstrate the performance for async load use cp.async, we will use multi-pipline to overlap the
-    memory access and computation.
+    This kernel will copy x into shared memory in block-wise, then apply x to 2 * x + 1, then copy
+    the result to out. we will use cp.async to copy data from shared memory to global memory. and
+    use ld.shared from shared memory to register. to demonstrate the performance for async load use
+    cp.async, we will use multi-pipline to overlap the memory access and computation.
 
     related documents:
     https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async
 
     there are two ways that can use multi-stage to overlap load/store and computation
-    1. use producer-consumer pattern, half of the warps will be producer, half of the warps will be consumer
-    2. just prefetch the first tile of data, and then in each step, we will wait the previous step load data,
-    then compute, and prefetch the next tile of data asynchronously
-    we will implement both of the two ways, first, we will implement the prefetch way, it does'nt need mbarrier to
+    1. use producer-consumer pattern, half of the warps will be producer, half of the warps will be
+    consumer
+    2. just prefetch the first tile of data, and then in each step, we will wait the previous step
+    load data, then compute, and prefetch the next tile of data asynchronously we will implement
+    both of the two ways, first, we will implement the prefetch way, it does'nt need mbarrier to
     synchronize the threads.
     */
     constexpr static uint32_t NumStages = 2;
@@ -87,7 +90,8 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
     // when block is 16 * 16, it means 8 elements can be loaded to each thread
     // and we use 4 registers to hold the data
     // we use a fixed number of elements per thread, and then use unroll for loop to load data
-    // the second way is more flexible, the first way leads to register overflow if block is too large
+    // the second way is more flexible, the first way leads to register overflow if block is too
+    // large
     constexpr static uint32_t NumElemPerThread = 4;
     // a struct for register to manage compute and load/store
     struct Register {
@@ -118,7 +122,8 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
     // and not use static_assert to make sure BlockN must divide by NumElemPerThread * 2
     auto launch_cp_async_v2 = [scheduler, x](uint32_t m, uint32_t n, int stage_id) {
         static_assert(BlockM * (BlockN / 2) % 32 == 0, "BlockM * BlockN must be divisible by 32");
-        // In fact, this assert can be avoided here, but for convenience, we implement it this way for now.
+        // In fact, this assert can be avoided here, but for convenience, we implement it this way
+        // for now.
         static_assert((BlockM * (BlockN / 2)) % (NumElemPerThread * 32) == 0,
             "BlockM * BlockN must be divisible by NumElemPerThread * 32");
         constexpr uint32_t bytes = NumElemPerThread * sizeof(bf16_2);
@@ -141,7 +146,8 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
 #else
         if (scheduler.is_first_step) {
             // we need prefetch the first tile data to shared memory
-            // noticed that cp.async is thread-level instruction, so we need load data to each thread
+            // noticed that cp.async is thread-level instruction, so we need load data to each
+            // thread
             launch_cp_async_v2(m_idx, n_idx, scheduler.stage_id);
         }
         // wait the current tile data from shared memory
@@ -159,11 +165,13 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         // we need load data from shared memory to register
 #endif
 #pragma unroll
-        for (uint32_t i = runtime::laneid() * NumElemPerThread; i < BlockM * BlockN / 2; i += NumElemPerThread * 32) {
+        for (uint32_t i = runtime::laneid() * NumElemPerThread; i < BlockM * BlockN / 2;
+            i += NumElemPerThread * 32) {
             regs.load(smem_x[scheduler.stage_id][runtime::warpid()], i);
             regs.compute();
             uint32_t glo_x = i / (BlockN / 2), glo_y = i % (BlockN / 2) * 2;
-            uint32_t global_offs = scheduler.global_offs(m_idx * BlockM + glo_x, n_idx * BlockN + glo_y);
+            uint32_t global_offs =
+                scheduler.global_offs(m_idx * BlockM + glo_x, n_idx * BlockN + glo_y);
             regs.store(out, global_offs);
         }
         scheduler.step();

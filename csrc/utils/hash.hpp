@@ -28,7 +28,8 @@ static std::string get_hex_digest(const std::string& data) {
     };
 
     std::ostringstream oss;
-    oss << std::hex << std::setfill('0') << std::setw(16) << split_mix(state_0) << std::setw(16) << split_mix(state_1);
+    oss << std::hex << std::setfill('0') << std::setw(16) << split_mix(state_0) << std::setw(16)
+        << split_mix(state_1);
     return oss.str();
 }
 

@@ -14,13 +14,8 @@ using bf16_2 = __nv_bfloat162;
 using bf16 = __nv_bfloat16;
 using Barrier = sync::Semaphore;
 
-template <uint32_t NumWorkers,
-    uint32_t M,
-    uint32_t N,
-    uint32_t BlockM,
-    uint32_t BlockN,
-    uint32_t NumBlocks,
-    uint32_t NumStages>
+template <uint32_t NumWorkers, uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN,
+    uint32_t NumBlocks, uint32_t NumStages>
 struct Scheduler {
     constexpr static auto NumWarps = NumWorkers * NumBlocks;
 
@@ -51,17 +46,10 @@ struct Scheduler {
     int current_iter, stage_id;
 };
 
-template <uint32_t NumBlocks,
-    uint32_t NumWarpsPerBlock,
-    uint32_t NumConsumers,
-    uint32_t NumProducers,
-    uint32_t NumStages,
-    uint32_t M,
-    uint32_t N,
-    uint32_t BlockM,
+template <uint32_t NumBlocks, uint32_t NumWarpsPerBlock, uint32_t NumConsumers,
+    uint32_t NumProducers, uint32_t NumStages, uint32_t M, uint32_t N, uint32_t BlockM,
     uint32_t BlockN>
-__global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x,
-    bf16* out,
+__global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf16* out,
     const __grid_constant__ CUtensorMap tensor_map_a,
     const __grid_constant__ CUtensorMap tensor_map_out) {
     /*
@@ -136,7 +124,8 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x,
     uint32_t warp_id = runtime::warpid();
     if (warp_id >= NumConsumers) {
         // Producer
-        Scheduler<NumProducers, M, N, BlockM, BlockN, NumBlocks, NumStages> scheduler(warp_id - NumConsumers);
+        Scheduler<NumProducers, M, N, BlockM, BlockN, NumBlocks, NumStages> scheduler(
+            warp_id - NumConsumers);
         uint32_t m_idx, n_idx;
         // Elect a single thread to perform wait/arrive and to issue TMA instructions
         if (not runtime::elect_one_sync()) {
@@ -154,7 +143,8 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x,
             // issuance versus a single issuer.
             full_barrier[scheduler.stage_id]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
             auto* barrier_ptr = reinterpret_cast<uint64_t*>(full_barrier[scheduler.stage_id]);
-            tma_strategy::tma_async_load(smem_x[scheduler.stage_id], x, barrier_ptr, {m_idx, n_idx});
+            tma_strategy::tma_async_load(
+                smem_x[scheduler.stage_id], x, barrier_ptr, {m_idx, n_idx});
 
             scheduler.step();
         }
@@ -166,11 +156,11 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x,
             full_barrier[scheduler.stage_id]->wait(scheduler.current_iter & 1);
             // Compute using data resident in shared memory
 
-            // Each thread processes 2 bf16 elements per register lane (NumElemPerThread = 4 bf16_2).
-            // Compute y = 2 * x + 1 in registers, store results to shared memory,
-            // then use TMA to store the results to global memory.
-            // Note: routing through shared memory is slower than writing registers directly to global;
-            // this path is used here to demonstrate TMA store.
+            // Each thread processes 2 bf16 elements per register lane (NumElemPerThread = 4
+            // bf16_2). Compute y = 2 * x + 1 in registers, store results to shared memory, then use
+            // TMA to store the results to global memory. Note: routing through shared memory is
+            // slower than writing registers directly to global; this path is used here to
+            // demonstrate TMA store.
             tma_strategy::compute_and_store(
                 smem_x[scheduler.stage_id], smem_y[scheduler.stage_id], out, {m_idx, n_idx});
             if (runtime::elect_one_sync()) {

@@ -26,7 +26,8 @@ public:
     )");
     }
 
-    static void launch_impl(const KernelHandle& kernel, const LaunchConfigHandle& config, Args args) {
+    static void launch_impl(
+        const KernelHandle& kernel, const LaunchConfigHandle& config, Args args) {
         K_CUDA_UNIFIED_CHECK(launch_kernel(kernel, config));
     }
 };

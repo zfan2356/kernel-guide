@@ -13,7 +13,8 @@ using bf16 = __nv_bfloat16;
 using Barrier = sync::Semaphore;
 
 template <typename Derived> struct TmaStrategy {
-    __device__ __forceinline__ static void tma_async_load(bf16* smem_x, bf16* x, uint64_t* barrier_ptr, uint2 coord) {
+    __device__ __forceinline__ static void tma_async_load(
+        bf16* smem_x, bf16* x, uint64_t* barrier_ptr, uint2 coord) {
         Derived::tma_async_load(smem_x, x, barrier_ptr, coord);
     }
 
@@ -48,16 +49,19 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
         }
     };
 
-    __device__ __forceinline__ static void tma_async_load(bf16* smem_x, bf16* x, uint64_t* barrier_ptr, uint2 coord) {
+    __device__ __forceinline__ static void tma_async_load(
+        bf16* smem_x, bf16* x, uint64_t* barrier_ptr, uint2 coord) {
         auto global_offset = (coord.x * BlockM) * N + coord.y * BlockN;
 #pragma unroll
         for (uint32_t i = 0; i < BlockM; i++) {
             bf16* smem_ptr = smem_x + i * BlockN;
-            async::TMA::load<1>(&smem_ptr[0], &x[global_offset + i * N], BlockN * sizeof(bf16), barrier_ptr);
+            async::TMA::load<1>(
+                &smem_ptr[0], &x[global_offset + i * N], BlockN * sizeof(bf16), barrier_ptr);
         }
     }
 
-    __device__ __forceinline__ static void compute_and_store(bf16* smem_x, bf16* smem_y, bf16* out, uint2 coord) {
+    __device__ __forceinline__ static void compute_and_store(
+        bf16* smem_x, bf16* smem_y, bf16* out, uint2 coord) {
         Register regs;
 #pragma unroll
         for (int i = runtime::laneid() * NumElem * 2; i < BlockM * BlockN; i += NumElem * 32 * 2) {
@@ -71,7 +75,8 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
 #pragma unroll
             for (uint32_t i = 0; i < BlockM; i++) {
                 bf16* smem_y_ptr = smem_y + i * BlockN;
-                async::TMA::store<1>(&out[global_offset + i * N], &smem_y_ptr[0], BlockN * sizeof(bf16));
+                async::TMA::store<1>(
+                    &out[global_offset + i * N], &smem_y_ptr[0], BlockN * sizeof(bf16));
             }
             async::TMA::commit_group();
             async::TMA::store_async_wait();

@@ -97,9 +97,10 @@ public:
     }
 
     std::shared_ptr<KernelRuntime> build(const std::string& name, const std::string& code) const {
-        const auto kernel_signature = fmt::format("{}$${}$${}$${}$${}", name, library_version, signature, flags, code);
-        const auto dir_path =
-            cache_dir_path / "cache" / fmt::format("kernel.{}.{}", name, get_hex_digest(kernel_signature));
+        const auto kernel_signature =
+            fmt::format("{}$${}$${}$${}$${}", name, library_version, signature, flags, code);
+        const auto dir_path = cache_dir_path / "cache" /
+                              fmt::format("kernel.{}.{}", name, get_hex_digest(kernel_signature));
 
         // Hit the runtime cache
         if (const auto& runtime = kernel_runtime_cache->get(dir_path); runtime != nullptr) {
@@ -124,8 +125,7 @@ public:
         return runtime;
     }
 
-    virtual void compile(const std::string& code,
-        const std::filesystem::path& dir_path,
+    virtual void compile(const std::string& code, const std::filesystem::path& dir_path,
         const std::filesystem::path& cubin_path) const = 0;
 };
 
@@ -156,7 +156,8 @@ class NVCCCompiler final : public Compiler {
         std::smatch match;
         K_HOST_ASSERT(std::regex_search(output, match, std::regex(R"(release (\d+\.\d+))")));
         std::sscanf(match[1].str().c_str(), "%d.%d", &major, &minor);
-        K_HOST_ASSERT((major > 12 or (major == 12 and minor >= 3)) and "NVCC version should be >= 12.3");
+        K_HOST_ASSERT(
+            (major > 12 or (major == 12 and minor >= 3)) and "NVCC version should be >= 12.3");
         if (major == 12 and minor < 9)
             printf("Warning: please use at least NVCC 12.9 for the best DeepGEMM performance\n");
         return {major, minor};
@@ -166,7 +167,8 @@ public:
     NVCCCompiler() {
         // Override the compiler signature
         nvcc_path = cuda_home / "bin" / "nvcc";
-        if (const auto& env_nvcc_path = get_env<std::string>("DG_JIT_NVCC_COMPILER"); not env_nvcc_path.empty()) {
+        if (const auto& env_nvcc_path = get_env<std::string>("DG_JIT_NVCC_COMPILER");
+            not env_nvcc_path.empty()) {
             nvcc_path = env_nvcc_path;
         }
         const auto& [nvcc_major, nvcc_minor] = get_nvcc_version();
@@ -185,24 +187,22 @@ public:
         // The override the compiler flags
         // Only NVCC >= 12.9 supports arch-specific family suffix
         const auto& arch = device_runtime->get_arch(false, nvcc_major > 12 or nvcc_minor >= 9);
-        flags = fmt::format("{} {} --gpu-architecture=sm_{} "
-                            "--compiler-options=-fPIC,-O3,-fconcepts,-Wno-deprecated-declarations,-Wno-abi "
-                            "-cubin -O3 --expt-relaxed-constexpr --expt-extended-lambda",
-            flags,
-            include_dirs,
-            arch);
+        flags = fmt::format(
+            "{} {} --gpu-architecture=sm_{} "
+            "--compiler-options=-fPIC,-O3,-fconcepts,-Wno-deprecated-declarations,-Wno-abi "
+            "-cubin -O3 --expt-relaxed-constexpr --expt-extended-lambda",
+            flags, include_dirs, arch);
     }
 
-    void compile(const std::string& code,
-        const std::filesystem::path& dir_path,
+    void compile(const std::string& code, const std::filesystem::path& dir_path,
         const std::filesystem::path& cubin_path) const override {
         // Write the code into the cache directory
         const auto& code_path = dir_path / "kernel.cu";
         put(code_path, code);
 
         // Compile
-        const auto& command =
-            fmt::format("{} {} -o {} {}", nvcc_path.c_str(), code_path.c_str(), cubin_path.c_str(), flags);
+        const auto& command = fmt::format(
+            "{} {} -o {} {}", nvcc_path.c_str(), code_path.c_str(), cubin_path.c_str(), flags);
         printf("Running NVCC command: %s\n", command.c_str());
         const auto& [return_code, output] = call_external_command(command);
         if (return_code != 0) {
@@ -214,7 +214,7 @@ public:
     }
 };
 
-static auto compiler =
-    LazyInit<Compiler>([]() -> std::shared_ptr<Compiler> { return std::make_shared<NVCCCompiler>(); });
+static auto compiler = LazyInit<Compiler>(
+    []() -> std::shared_ptr<Compiler> { return std::make_shared<NVCCCompiler>(); });
 
 } // namespace kernels

@@ -14,8 +14,8 @@ using LaunchAttrHandle = CUlaunchAttribute;
 
 #define K_CUDA_UNIFIED_CHECK K_CUDA_DRIVER_CHECK
 
-static KernelHandle load_kernel(
-    const std::filesystem::path& cubin_path, const std::string& func_name, LibraryHandle* library_opt = nullptr) {
+static KernelHandle load_kernel(const std::filesystem::path& cubin_path,
+    const std::string& func_name, LibraryHandle* library_opt = nullptr) {
     LibraryHandle library;
     KernelHandle kernel;
     K_CUDA_DRIVER_CHECK(cuModuleLoad(&library, cubin_path.c_str()));
@@ -33,13 +33,11 @@ static void unload_library(const LibraryHandle& library) {
 }
 
 static LaunchConfigHandle construct_launch_config(const KernelHandle& kernel,
-    const cudaStream_t& stream,
-    const int& smem_size,
-    const dim3& grid_dim,
-    const dim3& block_dim,
+    const cudaStream_t& stream, const int& smem_size, const dim3& grid_dim, const dim3& block_dim,
     const int& cluster_dim) {
     if (smem_size > 0)
-        K_CUDA_DRIVER_CHECK(cuFuncSetAttribute(kernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, smem_size));
+        K_CUDA_DRIVER_CHECK(
+            cuFuncSetAttribute(kernel, CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, smem_size));
 
     LaunchConfigHandle config;
     config.gridDimX = grid_dim.x;
@@ -67,7 +65,8 @@ static LaunchConfigHandle construct_launch_config(const KernelHandle& kernel,
 }
 
 template <typename... ActTypes>
-static auto launch_kernel(const KernelHandle& kernel, const LaunchConfigHandle& config, ActTypes&&... args) {
+static auto launch_kernel(
+    const KernelHandle& kernel, const LaunchConfigHandle& config, ActTypes&&... args) {
     void* ptr_args[] = {&args...};
     return cuLaunchKernelEx(&config, kernel, ptr_args, nullptr);
 }

@@ -50,21 +50,17 @@ inline std::tuple<int, int, int> get_default_recipe(
         return {1, 128, 128};
     } else if (arch_major == 10) {
         K_HOST_ASSERT(sfb_dtype == torch::kFloat or sfb_dtype == torch::kInt);
-        return sfb_dtype == torch::kFloat ? std::make_tuple(1, 128, 128) : // Legacy format or 1D2D kernels
-                   std::make_tuple(1, 1, 128);                             // 1D1D kernels
+        return sfb_dtype == torch::kFloat ? std::make_tuple(1, 128, 128)
+                                          :    // Legacy format or 1D2D kernels
+                   std::make_tuple(1, 1, 128); // 1D1D kernels
     }
     K_HOST_UNREACHABLE("Unknown recipe");
 }
 
 // SF layouts
-inline torch::Tensor check_sf_layout(const torch::Tensor& sf,
-    const int& mn,
-    const int& k,
-    const int& gran_mn,
-    const int& gran_k,
-    const std::optional<int>& num_groups,
-    const bool& tma_stride_check = false,
-    const bool& contiguous_check = false,
+inline torch::Tensor check_sf_layout(const torch::Tensor& sf, const int& mn, const int& k,
+    const int& gran_mn, const int& gran_k, const std::optional<int>& num_groups,
+    const bool& tma_stride_check = false, const bool& contiguous_check = false,
     const std::optional<torch::ScalarType>& type_check = std::nullopt) {
     // Type check
     if (type_check.has_value()) {

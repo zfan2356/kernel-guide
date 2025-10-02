@@ -85,12 +85,13 @@ inline std::filesystem::path make_dirs(const std::filesystem::path& path) {
 
 inline std::string get_uuid() {
     static std::random_device rd;
-    static std::mt19937 gen([]() { return rd() ^ std::chrono::steady_clock::now().time_since_epoch().count(); }());
+    static std::mt19937 gen(
+        []() { return rd() ^ std::chrono::steady_clock::now().time_since_epoch().count(); }());
     static std::uniform_int_distribution<uint32_t> dist;
 
     std::stringstream ss;
-    ss << getpid() << "-" << std::hex << std::setfill('0') << std::setw(8) << dist(gen) << "-" << std::setw(8)
-       << dist(gen) << "-" << std::setw(8) << dist(gen);
+    ss << getpid() << "-" << std::hex << std::setfill('0') << std::setw(8) << dist(gen) << "-"
+       << std::setw(8) << dist(gen) << "-" << std::setw(8) << dist(gen);
     return ss.str();
 }
 

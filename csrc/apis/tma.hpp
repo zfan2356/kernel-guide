@@ -41,20 +41,14 @@ public:
         >);
     }};
     )",
-            args.num_blocks,
-            args.num_warps_per_block,
-            args.num_consumers,
-            args.num_producers,
-            args.num_stages,
-            args.m,
-            args.n,
-            args.block_m,
-            args.block_n);
+            args.num_blocks, args.num_warps_per_block, args.num_consumers, args.num_producers,
+            args.num_stages, args.m, args.n, args.block_m, args.block_n);
     }
 
-    static void launch_impl(const KernelHandle& kernel, const LaunchConfigHandle& config, Args args) {
-        K_CUDA_UNIFIED_CHECK(launch_kernel(
-            kernel, config, args.x.data_ptr(), args.out.data_ptr(), args.tensor_map_a, args.tensor_map_out));
+    static void launch_impl(
+        const KernelHandle& kernel, const LaunchConfigHandle& config, Args args) {
+        K_CUDA_UNIFIED_CHECK(launch_kernel(kernel, config, args.x.data_ptr(), args.out.data_ptr(),
+            args.tensor_map_a, args.tensor_map_out));
     }
 };
 
@@ -99,18 +93,11 @@ namespace tma {
             static_cast<cuuint64_t>(gmem_stride * x.element_size()),
         };
         const cuuint32_t elem_strides[2] = {1, 1};
-        K_CUDA_DRIVER_CHECK(cuTensorMapEncodeTiled(&map,
-            aten_dtype_to_tensor_map_dtype(x.scalar_type()),
-            2,
-            x.data_ptr(),
-            gmem_dims,
-            gmem_strides,
-            smem_dims,
-            elem_strides,
-            CU_TENSOR_MAP_INTERLEAVE_NONE,
-            mode_into_tensor_map_swizzle(16),
-            CU_TENSOR_MAP_L2_PROMOTION_L2_256B,
-            CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE));
+        K_CUDA_DRIVER_CHECK(
+            cuTensorMapEncodeTiled(&map, aten_dtype_to_tensor_map_dtype(x.scalar_type()), 2,
+                x.data_ptr(), gmem_dims, gmem_strides, smem_dims, elem_strides,
+                CU_TENSOR_MAP_INTERLEAVE_NONE, mode_into_tensor_map_swizzle(16),
+                CU_TENSOR_MAP_L2_PROMOTION_L2_256B, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE));
         return map;
     }
 

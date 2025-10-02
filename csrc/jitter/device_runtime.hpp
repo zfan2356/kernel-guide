@@ -60,6 +60,7 @@ public:
     }
 };
 
-static auto device_runtime = LazyInit<DeviceRuntime>([]() { return std::make_shared<DeviceRuntime>(); });
+static auto device_runtime =
+    LazyInit<DeviceRuntime>([]() { return std::make_shared<DeviceRuntime>(); });
 
 } // namespace kernels

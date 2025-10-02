@@ -31,7 +31,8 @@ struct Barrier {
 struct MBarrier {
     __device__ __forceinline__ static void arrive(const ValueType* sem, uint32_t count) {
         uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(sem));
-        asm volatile("mbarrier.arrive.release.cta.shared::cta.b64 _, [%0], %1;\n" ::"r"(mbar_ptr), "r"(count)
+        asm volatile(
+            "mbarrier.arrive.release.cta.shared::cta.b64 _, [%0], %1;\n" ::"r"(mbar_ptr), "r"(count)
             : "memory");
     }
 
@@ -61,14 +62,16 @@ struct MBarrier {
         return result;
     }
 
-    __device__ __forceinline__ static void arrive_and_wait(const ValueType* sem, uint32_t phase, uint32_t count = 1) {
+    __device__ __forceinline__ static void arrive_and_wait(
+        const ValueType* sem, uint32_t phase, uint32_t count = 1) {
         arrive(sem, count);
         wait(sem, phase);
     }
 
     __device__ __forceinline__ static void expect_bytes(const ValueType* sem, uint32_t bytes) {
         uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(sem));
-        asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n" ::"r"(bar_ptr), "r"(bytes));
+        asm volatile(
+            "mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n" ::"r"(bar_ptr), "r"(bytes));
     }
 };
 
