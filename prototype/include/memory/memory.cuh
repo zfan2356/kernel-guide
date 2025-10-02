@@ -4,6 +4,11 @@
 
 namespace kernels::prototype::memory {
 
+/*
+    related documents:
+      https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-st
+
+*/
 enum class CopyAtom {
     OpS2R, // shared to register
     OpR2S, // register to shared
@@ -99,25 +104,25 @@ template <typename T>
 
 template <typename T>
     requires std::is_same_v<T, float> || std::is_same_v<T, __nv_bfloat162> struct Move<T, CopyAtom::OpR2S> {
-    // use st.global.cs
+    // use st.shared
     template <uint32_t N = 1> __device__ __forceinline__ static void move(void* dst, void* src) {
         char* src_ptr = static_cast<char*>(src);
         auto dst_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
         if constexpr (N == 1) {
-            asm volatile("st.weak.shared.cs.b32 [%0], %1;"
+            asm volatile("st.shared.b32 [%0], %1;"
                          :
-                         : "l"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
+                         : "r"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
                          : "memory");
         } else if constexpr (N == 2) {
-            asm volatile("st.weak.shared.cs.v2.b32 [%0], {%1, %2};"
+            asm volatile("st.shared.v2.b32 [%0], {%1, %2};"
                          :
-                         : "l"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                         : "r"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
                            "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4))
                          : "memory");
         } else if constexpr (N == 4) {
-            asm volatile("st.weak.shared.cs.v4.b32 [%0], {%1, %2, %3, %4};"
+            asm volatile("st.shared.v4.b32 [%0], {%1, %2, %3, %4};"
                          :
-                         : "l"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                         : "r"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
                            "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4)),
                            "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 8)),
                            "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 12))

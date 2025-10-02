@@ -179,8 +179,8 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
                     __device__ __forceinline__ void store(void* dst, uint32_t offs) {
                         // we need store the data to global memory directly
                         // cp.async just can help us to load data
-                        using copy = memory::Move<bf16_2, memory::CopyAtom::OpR2G>;
-                        void* dst_ptr = reinterpret_cast<void*>(reinterpret_cast<__nv_bfloat16*>(dst) + offs);
+                        using copy = memory::Move<bf16_2, memory::CopyAtom::OpR2S>;
+                        void* dst_ptr = reinterpret_cast<void*>(reinterpret_cast<bf16*>(dst) + offs);
                         copy::move<NumElemPerThread>(dst_ptr, regs);
                     }
                 } regs;
@@ -188,12 +188,17 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
                      i += NumElemPerThread * 32 * 2) {
                     regs.load(smem_x[scheduler.stage_id], i);
                     regs.compute();
-                    uint32_t glo_x = i / BlockN, glo_y = i % BlockN;
-                    uint32_t glo_offs = (m_idx * BlockM + glo_x) * N + (n_idx * BlockN + glo_y);
-                    regs.store(out, glo_offs);
+                    regs.store(smem_y[scheduler.stage_id], i);
                 }
 
                 if (runtime::elect_one_sync()) {
+                    auto global_offset = (m_idx * BlockM) * N + n_idx * BlockN;
+                    for (uint32_t i = 0; i < BlockM; i++) {
+                        bf16* smem_y_ptr = smem_y[scheduler.stage_id] + i * BlockN;
+                        async::TMA::store<1>(&out[global_offset + i * N], &smem_y_ptr[0], BlockN * sizeof(bf16));
+                    }
+                    async::TMA::commit_group();
+                    async::TMA::store_async_wait();
                     empty_barrier[scheduler.stage_id]->arrive();
                 }
             };
