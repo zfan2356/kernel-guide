@@ -120,11 +120,11 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(__nv_b
         static_assert(BlockM * (BlockN / 2) % 32 == 0, "BlockM * BlockN must be divisible by 32");
         // In fact, this assert can be avoided here, but for convenience, we implement it this way for now.
         static_assert((BlockM * (BlockN / 2)) % (NumElemPerThread * 32) == 0,
-                      "BlockM * BlockN must be divisible by NumElemPerThread * 32");
+            "BlockM * BlockN must be divisible by NumElemPerThread * 32");
         constexpr uint32_t bytes = NumElemPerThread * sizeof(bf16_2);
 #pragma unroll
         for (uint32_t offset = runtime::laneid() * NumElemPerThread; offset < BlockM * BlockN / 2;
-             offset += NumElemPerThread * 32) {
+            offset += NumElemPerThread * 32) {
             uint32_t glo_x = offset / (BlockN / 2), glo_y = offset % (BlockN / 2) * 2;
             uint32_t global_offs = scheduler.global_offs(m * BlockM + glo_x, n * BlockN + glo_y);
             async::CpAsync::call<bytes, async::CpAsync::CacheOperator::OpCG>(

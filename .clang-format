@@ -17,16 +17,16 @@ NamespaceIndentation: Inner
 ColumnLimit: 120
 AlwaysBreakTemplateDeclarations: MultiLine
 BreakBeforeBraces: Attach
-AllowShortFunctionsOnASingleLine: Empty
-AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: None
+AllowShortBlocksOnASingleLine: Never
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 
 # Template and function parameters
-BinPackParameters: true
-BinPackArguments: true
-AlignAfterOpenBracket: Align
+BinPackParameters: false
+BinPackArguments: false
+AlignAfterOpenBracket: DontAlign
 BreakBeforeBinaryOperators: None
 BreakBeforeTernaryOperators: true
 

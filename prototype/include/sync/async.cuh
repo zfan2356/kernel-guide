@@ -52,37 +52,6 @@ struct CpAsync {
                          need tensor map to describe the shape and layout of the tensor
 */
 struct TMA {
-    /*
-        create a tensor map for the given source tensor
-        tensor map is a descriptor of the tensor in memory
-        it contains the shape and layout of the tensor
-    */
-    template <typename T> struct TensorMap {
-        constexpr static int tensor_dim = 5;
-        __host__ __forceinline__ static CUtensorMap* create(T* src, int batch, int depth, int rows, int cols) {
-            void* global_addr = (void*)(src);
-
-            // now we only support bfloat16 and float
-            constexpr CUtensorMapDataType tma_format =
-                (std::is_same_v<T, __nv_bfloat16> ? CU_TENSOR_MAP_DATA_TYPE_BFLOAT16
-                 : std::is_same_v<T, float>       ? CU_TENSOR_MAP_DATA_TYPE_FLOAT32
-                                                  : CUtensorMapDataType(-1));
-
-            constexpr CUtensorMapInterleave tma_interleave = CU_TENSOR_MAP_INTERLEAVE_NONE;
-            constexpr CUtensorMapL2promotion tma_l2promotion = CU_TENSOR_MAP_L2_PROMOTION_NONE;
-            constexpr CUtensorMapFloatOOBfill tma_oobfill = CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE;
-            //
-            constexpr CUtensorMapSwizzle tma_swizzle = CU_TENSOR_MAP_SWIZZLE_NONE;
-
-            uint32_t gmem_shape[tensor_dim] = {0, 0, 0, 0, 0};
-            uint32_t gmem_stride[tensor_dim - 1] = {0, 0, 0, 0};
-            uint32_t smem_shape[tensor_dim] = {0, 0, 0, 0, 0};
-            uint32_t smem_stride[tensor_dim] = {1, 1, 1, 1, 1};
-
-            // constexpr uint32_t shae
-        }
-    };
-
     template <uint32_t Dim>
     __device__ __forceinline__ static void load(void* dst, const void* src, uint32_t nBytes, uint64_t* bar_ptr) {
         if constexpr (Dim == 1) {
@@ -91,9 +60,11 @@ struct TMA {
             uint64_t src_ptr = reinterpret_cast<uint64_t>(src);
             asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
                          "[%0], [%1], %2, [%3];\n"
-                         :
-                         : "l"(__cvta_generic_to_shared(dst)), "l"(src_ptr), "r"(nBytes),
-                           "l"(__cvta_generic_to_shared(bar_ptr)));
+                :
+                : "l"(__cvta_generic_to_shared(dst)),
+                "l"(src_ptr),
+                "r"(nBytes),
+                "l"(__cvta_generic_to_shared(bar_ptr)));
         } else {
             printf("Not Implemented\n");
         }
@@ -108,8 +79,8 @@ struct TMA {
             uint64_t dst_ptr = reinterpret_cast<uint64_t>(dst);
             asm volatile("cp.async.bulk.global.shared::cta.bulk_group "
                          "[%0], [%1], %2;\n"
-                         :
-                         : "l"(dst_ptr), "l"(__cvta_generic_to_shared(src)), "r"(nBytes));
+                :
+                : "l"(dst_ptr), "l"(__cvta_generic_to_shared(src)), "r"(nBytes));
         } else {
             printf("Not Implemented\n");
         }

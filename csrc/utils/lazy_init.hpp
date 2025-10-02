@@ -9,7 +9,8 @@ namespace kernels {
 
 template <typename T> class LazyInit {
 public:
-    explicit LazyInit(std::function<std::shared_ptr<T>()> factory) : factory(std::move(factory)) {}
+    explicit LazyInit(std::function<std::shared_ptr<T>()> factory) : factory(std::move(factory)) {
+    }
 
     T* operator->() {
         if (ptr == nullptr)

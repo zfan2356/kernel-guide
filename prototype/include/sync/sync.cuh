@@ -17,12 +17,14 @@ using ValueType = uint64_t;
 // a universal barrier, e.g. bar/barrier
 struct Barrier {
     uint32_t barrier_id;
-    __device__ __forceinline__ Barrier(uint32_t _id) : barrier_id(_id) {}
+    __device__ __forceinline__ Barrier(uint32_t _id) : barrier_id(_id) {
+    }
     __device__ __forceinline__ Barrier operator[](int i) {
         return Barrier(barrier_id + i);
     }
 
-    __device__ __forceinline__ void arrive() {}
+    __device__ __forceinline__ void arrive() {
+    }
 };
 
 // mbarrier, which support `expect_bytes`
@@ -30,7 +32,7 @@ struct MBarrier {
     __device__ __forceinline__ static void arrive(const ValueType* sem, uint32_t count) {
         uint32_t mbar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(sem));
         asm volatile("mbarrier.arrive.release.cta.shared::cta.b64 _, [%0], %1;\n" ::"r"(mbar_ptr), "r"(count)
-                     : "memory");
+            : "memory");
     }
 
     __device__ __forceinline__ static void wait(const ValueType* sem, uint32_t phase) {
@@ -43,7 +45,7 @@ struct MBarrier {
                      "bra.uni                   LAB_WAIT;\n"
                      "DONE:\n"
                      "}\n" ::"r"(mbar_ptr),
-                     "r"(phase));
+            "r"(phase));
     }
 
     __device__ __forceinline__ static int test_wait(const ValueType* sem, uint32_t phase) {
@@ -54,8 +56,8 @@ struct MBarrier {
                      "mbarrier.test_wait.parity.shared::cta.b64 P1, [%1], %2;\n"
                      "selp.u32 %0,1,0,P1;"
                      "}\n"
-                     : "=r"(result)
-                     : "r"(mbar_ptr), "r"(phase));
+            : "=r"(result)
+            : "r"(mbar_ptr), "r"(phase));
         return result;
     }
 

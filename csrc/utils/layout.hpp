@@ -42,8 +42,8 @@ template <int N> auto get_shape(const torch::Tensor& t) {
 }
 
 // Recipe
-inline std::tuple<int, int, int> get_default_recipe(const torch::ScalarType& sfa_dtype,
-                                                    const torch::ScalarType& sfb_dtype) {
+inline std::tuple<int, int, int> get_default_recipe(
+    const torch::ScalarType& sfa_dtype, const torch::ScalarType& sfb_dtype) {
     const auto& arch_major = device_runtime->get_arch_major();
     if (arch_major == 9) {
         K_HOST_ASSERT(sfa_dtype == torch::kFloat and sfb_dtype == torch::kFloat);
@@ -57,10 +57,15 @@ inline std::tuple<int, int, int> get_default_recipe(const torch::ScalarType& sfa
 }
 
 // SF layouts
-inline torch::Tensor check_sf_layout(const torch::Tensor& sf, const int& mn, const int& k, const int& gran_mn,
-                                     const int& gran_k, const std::optional<int>& num_groups,
-                                     const bool& tma_stride_check = false, const bool& contiguous_check = false,
-                                     const std::optional<torch::ScalarType>& type_check = std::nullopt) {
+inline torch::Tensor check_sf_layout(const torch::Tensor& sf,
+    const int& mn,
+    const int& k,
+    const int& gran_mn,
+    const int& gran_k,
+    const std::optional<int>& num_groups,
+    const bool& tma_stride_check = false,
+    const bool& contiguous_check = false,
+    const std::optional<torch::ScalarType>& type_check = std::nullopt) {
     // Type check
     if (type_check.has_value()) {
         K_HOST_ASSERT(sf.scalar_type() == type_check.value());

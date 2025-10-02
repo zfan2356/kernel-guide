@@ -17,8 +17,8 @@ template <typename Derived> struct TmaStrategy {
         Derived::tma_async_load(smem_x, x, barrier_ptr, coord);
     }
 
-    __device__ __forceinline__ static void compute_and_store(bf16* smem_x, bf16* smem_y, bf16* out, uint32_t stage_id,
-                                                             uint2 coord) {
+    __device__ __forceinline__ static void compute_and_store(
+        bf16* smem_x, bf16* smem_y, bf16* out, uint32_t stage_id, uint2 coord) {
         Derived::compute_and_store(smem_x, smem_y, out, stage_id, coord);
     }
 };

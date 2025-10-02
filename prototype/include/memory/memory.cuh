@@ -40,14 +40,15 @@ template <> struct Move<__nv_bfloat16, CopyAtom::OpS2R> {
             asm volatile("ld.shared.b16 %0, [%1];\n" : "=r"(*reinterpret_cast<uint32_t*>(dst)) : "r"(src_ptr));
         } else if constexpr (N == 2) {
             asm volatile("ld.shared.v2.b16 {%0, %1}, [%2];\n"
-                         : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)), "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 2))
-                         : "r"(src_ptr));
+                : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)), "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 2))
+                : "r"(src_ptr));
         } else if constexpr (N == 4) {
             asm volatile("ld.shared.v4.b16 {%0, %1, %2, %3}, [%4];\n"
-                         : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)), "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 2)),
-                           "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 4)),
-                           "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 6))
-                         : "r"(src_ptr));
+                : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)),
+                "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 2)),
+                "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 4)),
+                "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 6))
+                : "r"(src_ptr));
         }
     }
 };
@@ -62,14 +63,15 @@ template <typename T>
             asm volatile("ld.shared.b32 %0, [%1];\n" : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)) : "r"(src_ptr));
         } else if constexpr (N == 2) {
             asm volatile("ld.shared.v2.b32 {%0, %1}, [%2];\n"
-                         : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)), "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 4))
-                         : "r"(src_ptr));
+                : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)), "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 4))
+                : "r"(src_ptr));
         } else if constexpr (N == 4) {
             asm volatile("ld.shared.v4.b32 {%0, %1, %2, %3}, [%4];\n"
-                         : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)), "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 4)),
-                           "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 8)),
-                           "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 12))
-                         : "r"(src_ptr));
+                : "=r"(*reinterpret_cast<uint32_t*>(dst_ptr)),
+                "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 4)),
+                "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 8)),
+                "=r"(*reinterpret_cast<uint32_t*>(dst_ptr + 12))
+                : "r"(src_ptr));
         }
     }
 };
@@ -81,23 +83,25 @@ template <typename T>
         char* src_ptr = static_cast<char*>(src);
         if constexpr (N == 1) {
             asm volatile("st.weak.global.cs.b32 [%0], %1;"
-                         :
-                         : "l"(dst), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
-                         : "memory");
+                :
+                : "l"(dst), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
+                : "memory");
         } else if constexpr (N == 2) {
             asm volatile("st.weak.global.cs.v2.b32 [%0], {%1, %2};"
-                         :
-                         : "l"(dst), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4))
-                         : "memory");
+                :
+                : "l"(dst),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4))
+                : "memory");
         } else if constexpr (N == 4) {
             asm volatile("st.weak.global.cs.v4.b32 [%0], {%1, %2, %3, %4};"
-                         :
-                         : "l"(dst), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 8)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 12))
-                         : "memory");
+                :
+                : "l"(dst),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 8)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 12))
+                : "memory");
         }
     }
 };
@@ -110,23 +114,25 @@ template <typename T>
         auto dst_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
         if constexpr (N == 1) {
             asm volatile("st.shared.b32 [%0], %1;"
-                         :
-                         : "r"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
-                         : "memory");
+                :
+                : "r"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
+                : "memory");
         } else if constexpr (N == 2) {
             asm volatile("st.shared.v2.b32 [%0], {%1, %2};"
-                         :
-                         : "r"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4))
-                         : "memory");
+                :
+                : "r"(dst_ptr),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4))
+                : "memory");
         } else if constexpr (N == 4) {
             asm volatile("st.shared.v4.b32 [%0], {%1, %2, %3, %4};"
-                         :
-                         : "r"(dst_ptr), "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 8)),
-                           "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 12))
-                         : "memory");
+                :
+                : "r"(dst_ptr),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 4)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 8)),
+                "r"(*reinterpret_cast<const uint32_t*>(src_ptr + 12))
+                : "memory");
         }
     }
 };
@@ -138,9 +144,9 @@ template <typename T> requires std::is_same_v<T, __nv_bfloat16> struct Move<T, C
         char* src_ptr = static_cast<char*>(src);
         if constexpr (N == 1) {
             asm volatile("st.weak.global.cs.b16 [%0], %1;"
-                         :
-                         : "l"(dst), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
-                         : "memory");
+                :
+                : "l"(dst), "r"(*reinterpret_cast<const uint32_t*>(src_ptr))
+                : "memory");
         } else if constexpr (N % 2 == 0 and N <= 8) {
             using copy = Move<float, CopyAtom::OpR2G>;
             float* dst_ptr = reinterpret_cast<float*>(dst);

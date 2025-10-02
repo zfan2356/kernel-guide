@@ -35,7 +35,12 @@ public:
         >);
     }};
     )",
-            args.num_blocks, args.num_warps_per_block, args.m, args.n, args.block_m, args.block_n);
+            args.num_blocks,
+            args.num_warps_per_block,
+            args.m,
+            args.n,
+            args.block_m,
+            args.block_n);
     }
 
     static void launch_impl(const KernelHandle& kernel, const LaunchConfigHandle& config, Args args) {

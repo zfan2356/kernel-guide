@@ -36,8 +36,9 @@ public:
         return get_hex_digest(ss.str());
     }
 
-    static void prepare_init(const std::string& library_root_path, const std::string& cuda_home_path_by_python,
-                             const std::vector<std::string>& custom_include_paths = {}) {
+    static void prepare_init(const std::string& library_root_path,
+        const std::string& cuda_home_path_by_python,
+        const std::vector<std::string>& custom_include_paths = {}) {
         Compiler::library_root_path = library_root_path;
         if (!custom_include_paths.empty()) {
             // Use custom include paths
@@ -67,7 +68,7 @@ public:
         signature = "unknown-compiler";
         flags = fmt::format("-std=c++{} --diag-suppress=39,161,174,177,186,940 "
                             "--ptxas-options=--register-usage-level=10",
-                            get_env<int>("DG_JIT_CPP_STANDARD", 20));
+            get_env<int>("DG_JIT_CPP_STANDARD", 20));
         flags += " --ptxas-options=--verbose";
         if (get_env("DG_JIT_WITH_LINEINFO", 0))
             flags += " -Xcompiler -rdynamic -lineinfo";
@@ -123,8 +124,9 @@ public:
         return runtime;
     }
 
-    virtual void compile(const std::string& code, const std::filesystem::path& dir_path,
-                         const std::filesystem::path& cubin_path) const = 0;
+    virtual void compile(const std::string& code,
+        const std::filesystem::path& dir_path,
+        const std::filesystem::path& cubin_path) const = 0;
 };
 
 // NOLINTNEXTLINE(misc-definitions-in-headers)
@@ -186,11 +188,14 @@ public:
         flags = fmt::format("{} {} --gpu-architecture=sm_{} "
                             "--compiler-options=-fPIC,-O3,-fconcepts,-Wno-deprecated-declarations,-Wno-abi "
                             "-cubin -O3 --expt-relaxed-constexpr --expt-extended-lambda",
-                            flags, include_dirs, arch);
+            flags,
+            include_dirs,
+            arch);
     }
 
-    void compile(const std::string& code, const std::filesystem::path& dir_path,
-                 const std::filesystem::path& cubin_path) const override {
+    void compile(const std::string& code,
+        const std::filesystem::path& dir_path,
+        const std::filesystem::path& cubin_path) const override {
         // Write the code into the cache directory
         const auto& code_path = dir_path / "kernel.cu";
         put(code_path, code);
