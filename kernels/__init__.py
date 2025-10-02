@@ -1,7 +1,12 @@
 import os
 import subprocess
 
-from kernels_cpp import cp_async_test, hello_world, init, tma_test
+from kernels_cpp import (  # pylint: disable=import-error
+    cp_async_test,
+    hello_world,
+    init,
+    tma_test,
+)
 
 
 # Initialize CPP modules

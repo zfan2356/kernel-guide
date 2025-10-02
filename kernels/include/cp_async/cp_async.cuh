@@ -7,12 +7,12 @@
 
 namespace kernels::cpasync {
 using namespace kernels::prototype;
-using bf16_2 = __nv_bfloat162;
+using bf16_2 = nv_bfloat162;
 
 template <uint32_t NumBlocks, uint32_t NumWarpsPerBlock, uint32_t M, uint32_t N, uint32_t BlockM,
     uint32_t BlockN>
 __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
-    __nv_bfloat16* x, __nv_bfloat16* out) {
+    nv_bfloat16* x, nv_bfloat16* out) {
     /*
     x: [M, N] bfloat16
     out: [M, N] bfloat16
@@ -36,7 +36,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
     constexpr static uint32_t NumWarps = NumWarpsPerBlock * NumBlocks;
 
     // first, we need init a multi-stage shared memory
-    // we use __nv_bfloat162 to utilize the 32-bit register
+    // we use nv_bfloat162 to utilize the 32-bit register
     __shared__ bf16_2 smem_x[2][NumWarpsPerBlock][BlockM * BlockN / 2];
 
     // scheduler to schedule the work tile, divided by block-wise
@@ -103,15 +103,15 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
         }
         __device__ __forceinline__ void compute() {
             for (uint32_t i = 0; i < NumElemPerThread; i++) {
-                regs[i] = __hmul2(regs[i], __nv_bfloat162(2, 2));
-                regs[i] = __hadd2(regs[i], __nv_bfloat162(1, 1));
+                regs[i] = __hmul2(regs[i], bf16_2(2, 2));
+                regs[i] = __hadd2(regs[i], bf16_2(1, 1));
             }
         }
         __device__ __forceinline__ void store(void* dst, uint32_t offs) {
             // we need store the data to global memory directly
             // cp.async just can help us to load data
             using copy = memory::Move<bf16_2, memory::CopyAtom::OpR2G>;
-            void* dst_ptr = reinterpret_cast<void*>(reinterpret_cast<__nv_bfloat16*>(dst) + offs);
+            void* dst_ptr = reinterpret_cast<void*>(reinterpret_cast<nv_bfloat16*>(dst) + offs);
             copy::move<NumElemPerThread>(dst_ptr, regs);
         }
     } regs;

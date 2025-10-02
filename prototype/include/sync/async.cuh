@@ -6,6 +6,10 @@
 #include <cuda_bf16.h>
 #include <cassert>
 
+#include <cute/arch/mma_sm90_gmma.hpp>
+#include <cute/arch/mma_sm90_gmma_ext.hpp>
+#include <cute/arch/copy_sm90_tma.hpp>
+
 namespace kernels::prototype::async {
 // Constrain Bytes parameter for cp.async: allowed sizes are 4, 8, and 16 bytes
 template <uint32_t Bytes> concept ValidCpAsyncBytes = (Bytes == 4 || Bytes == 8 || Bytes == 16);
@@ -57,38 +61,53 @@ struct CpAsync {
                          need tensor map to describe the shape and layout of the tensor
 */
 struct TMA {
-    template <uint32_t Dim>
-    __device__ __forceinline__ static void load(
+    __device__ __forceinline__ static void load_1d(
         void* dst, const void* src, uint32_t nBytes, uint64_t* bar_ptr) {
-        if constexpr (Dim == 1) {
-            // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
-            assert(nBytes % 16 == 0);
-            uint64_t src_ptr = reinterpret_cast<uint64_t>(src);
-            asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
-                         "[%0], [%1], %2, [%3];\n"
-                :
-                : "l"(__cvta_generic_to_shared(dst)), "l"(src_ptr), "r"(nBytes),
-                "l"(__cvta_generic_to_shared(bar_ptr)));
-        } else {
-            printf("Not Implemented\n");
-        }
+        // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
+        assert(nBytes % 16 == 0);
+        uint64_t src_ptr = reinterpret_cast<uint64_t>(src);
+        asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
+                     "[%0], [%1], %2, [%3];\n"
+            :
+            : "l"(__cvta_generic_to_shared(dst)), "l"(src_ptr), "r"(nBytes),
+            "l"(__cvta_generic_to_shared(bar_ptr)));
     }
 
-    template <uint32_t Dim>
-    __device__ __forceinline__ static void store(void* dst, const void* src, uint32_t nBytes) {
-        if constexpr (Dim == 1) {
-            // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
-            // it seems that cp.async.bulk.global.shared::cta not support mbarrier...
-            // it only support commit group and wait group
-            assert(nBytes % 16 == 0);
-            uint64_t dst_ptr = reinterpret_cast<uint64_t>(dst);
-            asm volatile("cp.async.bulk.global.shared::cta.bulk_group "
-                         "[%0], [%1], %2;\n"
-                :
-                : "l"(dst_ptr), "l"(__cvta_generic_to_shared(src)), "r"(nBytes));
-        } else {
-            printf("Not Implemented\n");
-        }
+    __device__ __forceinline__ static void prefetch_tensor_map(const void* desc) {
+        uint64_t gmem_desc = reinterpret_cast<uint64_t>(desc);
+        asm volatile("prefetch.tensormap [%0];" : : "l"(gmem_desc) : "memory");
+    }
+
+    __device__ __forceinline__ static void load_2d(
+        void* dst, const void* desc, uint64_t* mbar, uint2 coord) {
+        uint64_t gmem_desc = reinterpret_cast<uint64_t>(desc);
+        uint32_t dst_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
+
+        asm volatile("cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes"
+                     " [%0], [%1, {%3, %4}], [%2];" ::"r"(dst_ptr),
+            "l"(gmem_desc), "l"(__cvta_generic_to_shared(mbar)), "r"(coord.y), "r"(coord.x)
+            : "memory");
+    }
+
+    __device__ __forceinline__ static void store_1d(void* dst, const void* src, uint32_t nBytes) {
+        // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
+        // it seems that cp.async.bulk.global.shared::cta not support mbarrier...
+        // it only support commit group and wait group
+        assert(nBytes % 16 == 0);
+        uint64_t dst_ptr = reinterpret_cast<uint64_t>(dst);
+        asm volatile("cp.async.bulk.global.shared::cta.bulk_group "
+                     "[%0], [%1], %2;\n"
+            :
+            : "l"(dst_ptr), "l"(__cvta_generic_to_shared(src)), "r"(nBytes));
+    }
+
+    __device__ __forceinline__ static void store_2d(const void* desc, void* src, uint2 coord) {
+        uint64_t gmem_desc = reinterpret_cast<uint64_t>(desc);
+        uint32_t src_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(src));
+        asm volatile("cp.async.bulk.tensor.2d.global.shared::cta.bulk_group [%0, {%2, %3}], [%1];"
+            :
+            : "l"(gmem_desc), "r"(src_ptr), "r"(coord.y), "r"(coord.x)
+            : "memory");
     }
 
     __device__ __forceinline__ static void commit_group() {
