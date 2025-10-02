@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cuda_bf16.h>
 #include "prototype.cuh"
+#include "tma/strategy.cuh"
 
 #include <cutlass/arch/barrier.h>
 
@@ -114,6 +115,9 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
     }
     __syncthreads();
 
+    constexpr static uint32_t NumElemPerThread = 4;
+    using tma_strategy = TmaStrategyV1<NumElemPerThread, BlockM, BlockN, M, N>;
+
     uint32_t warp_id = runtime::warpid();
     if (warp_id >= NumConsumers) {
         // Producer
@@ -133,18 +137,10 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
             // We therefore issue all TMA operations from a single elected thread.
             // This also mirrors the common pattern with cp.async when comparing per-thread
             // issuance versus a single issuer.
+            full_barrier[scheduler.stage_id]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
+            auto* barrier_ptr = reinterpret_cast<uint64_t*>(full_barrier[scheduler.stage_id]);
+            tma_strategy::tma_async_load(smem_x[scheduler.stage_id], x, barrier_ptr, {m_idx, n_idx});
 
-            auto tma_async_load_v1 = [&]() {
-                full_barrier[scheduler.stage_id]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
-                auto global_offset = (m_idx * BlockM) * N + n_idx * BlockN;
-                auto* barrier_ptr = reinterpret_cast<uint64_t*>(full_barrier[scheduler.stage_id]);
-                for (uint32_t i = 0; i < BlockM; i++) {
-                    bf16* smem_x_ptr = smem_x[scheduler.stage_id] + i * BlockN;
-                    async::TMA::load<1>(&smem_x_ptr[0], &x[global_offset + i * N], BlockN * sizeof(bf16), barrier_ptr);
-                }
-            };
-
-            tma_async_load_v1();
             scheduler.step();
         }
     } else {
@@ -160,50 +156,12 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
             // then use TMA to store the results to global memory.
             // Note: routing through shared memory is slower than writing registers directly to global;
             // this path is used here to demonstrate TMA store.
+            tma_strategy::compute_and_store(smem_x[scheduler.stage_id], smem_y[scheduler.stage_id], out,
+                                            {m_idx, n_idx});
+            if (runtime::elect_one_sync()) {
+                empty_barrier[scheduler.stage_id]->arrive();
+            }
 
-            auto compute_and_store_v1 = [&]() {
-                constexpr static uint32_t NumElemPerThread = 4;
-                struct Register {
-                    bf16_2 regs[NumElemPerThread];
-                    __device__ __forceinline__ void load(void* src, uint32_t offs) {
-                        using copy = memory::Move<bf16_2, memory::CopyAtom::OpS2R>;
-                        void* src_ptr = reinterpret_cast<void*>(reinterpret_cast<bf16*>(src) + offs);
-                        copy::move<NumElemPerThread>(regs, src_ptr);
-                    }
-                    __device__ __forceinline__ void compute() {
-                        for (uint32_t i = 0; i < NumElemPerThread; i++) {
-                            regs[i] = __hmul2(regs[i], __nv_bfloat162(2, 2));
-                            regs[i] = __hadd2(regs[i], __nv_bfloat162(1, 1));
-                        }
-                    }
-                    __device__ __forceinline__ void store(void* dst, uint32_t offs) {
-                        // we need store the data to global memory directly
-                        // cp.async just can help us to load data
-                        using copy = memory::Move<bf16_2, memory::CopyAtom::OpR2S>;
-                        void* dst_ptr = reinterpret_cast<void*>(reinterpret_cast<bf16*>(dst) + offs);
-                        copy::move<NumElemPerThread>(dst_ptr, regs);
-                    }
-                } regs;
-                for (int i = runtime::laneid() * NumElemPerThread * 2; i < BlockM * BlockN;
-                     i += NumElemPerThread * 32 * 2) {
-                    regs.load(smem_x[scheduler.stage_id], i);
-                    regs.compute();
-                    regs.store(smem_y[scheduler.stage_id], i);
-                }
-
-                if (runtime::elect_one_sync()) {
-                    auto global_offset = (m_idx * BlockM) * N + n_idx * BlockN;
-                    for (uint32_t i = 0; i < BlockM; i++) {
-                        bf16* smem_y_ptr = smem_y[scheduler.stage_id] + i * BlockN;
-                        async::TMA::store<1>(&out[global_offset + i * N], &smem_y_ptr[0], BlockN * sizeof(bf16));
-                    }
-                    async::TMA::commit_group();
-                    async::TMA::store_async_wait();
-                    empty_barrier[scheduler.stage_id]->arrive();
-                }
-            };
-
-            compute_and_store_v1();
             scheduler.step();
         }
     }
