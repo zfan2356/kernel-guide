@@ -4,23 +4,25 @@
 #include <cstdint>
 #include <cuda_bf16.h>
 #include "prototype.cuh"
-
+#include <cutlass/arch/barrier.h>
 
 namespace kernels::tma {
 using namespace kernels::prototype;
 using bf16_2 = nv_bfloat162;
 using bf16 = nv_bfloat16;
+
 using Barrier = sync::Semaphore;
+// using Barrier = cutlass::arch::ClusterTransactionBarrier;
 
 template <typename Derived> struct TmaStrategy {
     __device__ __forceinline__ static void tma_async_load(
-        bf16* smem_x, bf16* x, uint64_t* barrier_ptr, uint2 coord, CUtensorMap tensor_map) {
+        bf16* smem_x, bf16* x, uint32_t* barrier_ptr, uint2 coord, CUtensorMap tensor_map) {
         Derived::tma_async_load(smem_x, x, barrier_ptr, coord, tensor_map);
     }
 
-    __device__ __forceinline__ static void compute_and_store(bf16* smem_x, bf16* smem_y, bf16* out,
-        uint32_t stage_id, uint2 coord, CUtensorMap tensor_map) {
-        Derived::compute_and_store(smem_x, smem_y, out, stage_id, coord, tensor_map);
+    __device__ __forceinline__ static void compute_and_store(
+        bf16* smem_x, bf16* smem_y, bf16* out, uint2 coord, CUtensorMap tensor_map) {
+        Derived::compute_and_store(smem_x, smem_y, out, coord, tensor_map);
     }
 };
 
@@ -49,10 +51,9 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
         }
     };
 
-    __device__ __forceinline__ static void tma_async_load(
-        bf16* smem_x, bf16* x, uint64_t* barrier_ptr, uint2 coord, CUtensorMap tensor_map) {
-        auto global_offset = (coord.x * BlockM) * N + coord.y * BlockN;
-#pragma unroll
+    __device__ __forceinline__ static void tma_async_load(bf16* smem_x, bf16* x,
+        uint32_t* barrier_ptr, uint32_t crd0, uint32_t crd1, CUtensorMap tensor_map) {
+        auto global_offset = (crd0 * BlockM) * N + crd1 * BlockN;
         for (uint32_t i = 0; i < BlockM; i++) {
             bf16* smem_ptr = smem_x + i * BlockN;
             async::TMA::load_1d(
@@ -60,18 +61,20 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
         }
     }
 
-    __device__ __forceinline__ static void compute_and_store(
-        bf16* smem_x, bf16* smem_y, bf16* out, uint2 coord, CUtensorMap tensor_map) {
+    __device__ __forceinline__ static void compute_and_store(bf16* smem_x, bf16* smem_y, bf16* out,
+        uint32_t crd0, uint32_t crd1, CUtensorMap tensor_map) {
         Register regs;
+        // do calc in one warp
 #pragma unroll
         for (int i = runtime::laneid() * NumElem * 2; i < BlockM * BlockN; i += NumElem * 32 * 2) {
             regs.load(smem_x, i);
             regs.compute();
             regs.store(smem_y, i);
         }
+        __syncwarp();
 
         if (runtime::elect_one_sync()) {
-            auto global_offset = (coord.x * BlockM) * N + coord.y * BlockN;
+            auto global_offset = (crd0 * BlockM) * N + crd1 * BlockN;
 #pragma unroll
             for (uint32_t i = 0; i < BlockM; i++) {
                 bf16* smem_y_ptr = smem_y + i * BlockN;
@@ -81,6 +84,7 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
             async::TMA::commit_group();
             async::TMA::store_async_wait();
         }
+        __syncwarp();
     }
 };
 
@@ -110,16 +114,16 @@ struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<NumElem, BlockM, BlockN,
         }
     };
 
-    __device__ __forceinline__ static void tma_async_load(
-        bf16* smem_x, bf16* x, uint64_t* barrier_ptr, uint2 coord, CUtensorMap tensor_map) {
-        uint2 global_coord = {coord.x * BlockM, coord.y * BlockN};
+    __device__ __forceinline__ static void tma_async_load(bf16* smem_x, bf16* x,
+        uint32_t* barrier_ptr, uint32_t crd0, uint32_t crd1, CUtensorMap tensor_map) {
+        uint2 global_coord = {crd0 * BlockM, crd1 * BlockN};
         async::TMA::load_2d(smem_x, &tensor_map, barrier_ptr, global_coord);
     }
 
-    __device__ __forceinline__ static void compute_and_store(
-        bf16* smem_x, bf16* smem_y, bf16* out, uint2 coord, CUtensorMap tensor_map) {
+    __device__ __forceinline__ static void compute_and_store(bf16* smem_x, bf16* smem_y, bf16* out,
+        uint32_t crd0, uint32_t crd1, CUtensorMap tensor_map) {
         Register regs;
-        uint2 global_coord = {coord.x * BlockM, coord.y * BlockN};
+        uint2 global_coord = {crd0 * BlockM, crd1 * BlockN};
 #pragma unroll
         for (int i = runtime::laneid() * NumElem * 2; i < BlockM * BlockN; i += NumElem * 32 * 2) {
             regs.load(smem_x, i);

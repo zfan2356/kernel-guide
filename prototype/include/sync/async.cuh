@@ -10,6 +10,7 @@
 #include <cute/arch/mma_sm90_gmma_ext.hpp>
 #include <cute/arch/copy_sm90_tma.hpp>
 
+
 namespace kernels::prototype::async {
 // Constrain Bytes parameter for cp.async: allowed sizes are 4, 8, and 16 bytes
 template <uint32_t Bytes> concept ValidCpAsyncBytes = (Bytes == 4 || Bytes == 8 || Bytes == 16);
@@ -62,7 +63,7 @@ struct CpAsync {
 */
 struct TMA {
     __device__ __forceinline__ static void load_1d(
-        void* dst, const void* src, uint32_t nBytes, uint64_t* bar_ptr) {
+        void* dst, const void* src, uint32_t nBytes, uint32_t* bar_ptr) {
         // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#data-movement-and-conversion-instructions-cp-async-bulk
         assert(nBytes % 16 == 0);
         uint64_t src_ptr = reinterpret_cast<uint64_t>(src);
@@ -79,13 +80,13 @@ struct TMA {
     }
 
     __device__ __forceinline__ static void load_2d(
-        void* dst, const void* desc, uint64_t* mbar, uint2 coord) {
+        void* dst, const void* desc, uint32_t* mbar, uint2 coord) {
         uint64_t gmem_desc = reinterpret_cast<uint64_t>(desc);
         uint32_t dst_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
 
         asm volatile("cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes"
                      " [%0], [%1, {%3, %4}], [%2];" ::"r"(dst_ptr),
-            "l"(gmem_desc), "l"(__cvta_generic_to_shared(mbar)), "r"(coord.y), "r"(coord.x)
+            "l"(gmem_desc), "l"(__cvta_generic_to_shared(mbar)), "r"(coord.x), "r"(coord.y)
             : "memory");
     }
 

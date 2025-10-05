@@ -22,7 +22,7 @@ public:
         uint32_t m, n, block_m, block_n;
         const torch::Tensor& x;
         const torch::Tensor& out;
-        CUtensorMap tensor_map_a;
+        CUtensorMap tensor_map_x;
         CUtensorMap tensor_map_out;
         uint32_t swizzle_mode;
     };
@@ -49,7 +49,7 @@ public:
     static void launch_impl(
         const KernelHandle& kernel, const LaunchConfigHandle& config, Args args) {
         K_CUDA_UNIFIED_CHECK(launch_kernel(kernel, config, args.x.data_ptr(), args.out.data_ptr(),
-            args.tensor_map_a, args.tensor_map_out));
+            args.tensor_map_x, args.tensor_map_out));
     }
 };
 
@@ -112,13 +112,13 @@ namespace tma {
         uint32_t num_stages = 4, num_consumers = 1, num_producers = 1;
         uint32_t num_blocks = 70, num_warps_per_block = num_consumers + num_producers;
         const uint32_t m = x.size(0), n = x.size(1);
-        const uint32_t block_m = 128, block_n = 128;
+        const uint32_t block_m = 64, block_n = 64;
 
         K_HOST_ASSERT(m % block_m == 0 && n % block_n == 0);
         K_HOST_ASSERT(m == out.size(0) && n == out.size(1));
         K_HOST_ASSERT(num_consumers + num_producers == num_warps_per_block);
 
-        const auto& tensor_map_a = create_tensor_map(x, block_m, block_n, m, n, swizzle_mode);
+        const auto& tensor_map_x = create_tensor_map(x, block_m, block_n, m, n, swizzle_mode);
         const auto& tensor_map_out = create_tensor_map(out, block_m, block_n, m, n, swizzle_mode);
 
         uint32_t smem_size = num_stages * block_m * block_n * 2 * 2 + 1024;
@@ -135,7 +135,7 @@ namespace tma {
             .block_n = block_n,
             .x = x,
             .out = out,
-            .tensor_map_a = tensor_map_a,
+            .tensor_map_x = tensor_map_x,
             .tensor_map_out = tensor_map_out,
             .swizzle_mode = swizzle_mode,
         };
