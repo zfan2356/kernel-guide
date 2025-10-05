@@ -88,7 +88,7 @@ namespace tma {
         if (swizzle_mode != 0) {
             smem_inner_dim = swizzle_mode / elem_size;
         }
-        CUtensorMap map;
+        CUtensorMap map{};
         // notes the data type
         const cuuint64_t gmem_dims[2] = {
             static_cast<cuuint64_t>(gmem_inner_dim), static_cast<cuuint64_t>(gmem_outer_dim)};

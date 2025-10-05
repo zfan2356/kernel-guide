@@ -11,7 +11,7 @@ class TestTMA(unittest.TestCase):
 
         out = torch.empty_like(x)
 
-        kernels.tma_test(x, out, 16)
+        kernels.tma_test(x, out, 0)
         torch.cuda.synchronize()
 
         ref_out = x * 2 + 1

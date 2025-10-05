@@ -23,10 +23,29 @@ python -m unittest tests/test_hello.py
 
 ## Kernel Lists
 
-- [x] CP Async
+### CPP Kernels
+
+- [x] CP Async: 1d Asynchronize Load
+
+```
+cp.async;
+cp.async.commit_group;
+cp.async.wait_group;
+```
 
 - [ ] ld.matrix + MMA
+
+- [x] TMA: 1d Asynchronize Load and Store
+
+```
+cp.async.bulk.mbarrier::complete_tx::bytes;
+cp.async.bulk.bulk_group;
+```
 
 - [ ] TMA Swizzle
 
 - [ ] Hopper WGMMA
+
+### Cute DSL Kernels
+
+- [ ] Flash Attention v2
