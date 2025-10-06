@@ -28,8 +28,8 @@ __device__ __forceinline__ uint32_t elect_one_sync() {
                  "@%%px mov.s32 %1, 1;\n"
                  "     mov.s32 %0, %%rx;\n"
                  "}\n"
-        : "+r"(laneid), "+r"(pred)
-        : "r"(0xFFFFFFFF));
+                 : "+r"(laneid), "+r"(pred)
+                 : "r"(0xFFFFFFFF));
     return pred;
 }
 

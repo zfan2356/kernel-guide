@@ -1,6 +1,7 @@
 import unittest
 
 import torch
+from triton.testing import do_bench
 
 import kernels
 
@@ -16,18 +17,10 @@ class TestTMA(unittest.TestCase):
 
         ref_out = x * 2 + 1
         torch.cuda.synchronize()
-
-        for i in range(0, 2048, 128):
-            for j in range(0, 2048, 128):
-                try:
-                    torch.testing.assert_close(
-                        out[i : i + 128, j : j + 128], ref_out[i : i + 128, j : j + 128]
-                    )
-                except Exception as e:
-                    print(f"Error at {i}, {j}")
-                    raise e
-
         torch.testing.assert_close(out, ref_out)
+
+        t = do_bench(lambda: kernels.tma_test(x, out, 0))
+        print(f"time: {t:.5f} ms")
 
 
 if __name__ == "__main__":

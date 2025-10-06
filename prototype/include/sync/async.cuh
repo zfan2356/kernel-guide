@@ -69,9 +69,9 @@ struct TMA {
         uint64_t src_ptr = reinterpret_cast<uint64_t>(src);
         asm volatile("cp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes "
                      "[%0], [%1], %2, [%3];\n"
-            :
-            : "l"(__cvta_generic_to_shared(dst)), "l"(src_ptr), "r"(nBytes),
-            "l"(__cvta_generic_to_shared(bar_ptr)));
+                     :
+                     : "l"(__cvta_generic_to_shared(dst)), "l"(src_ptr), "r"(nBytes),
+                     "l"(__cvta_generic_to_shared(bar_ptr)));
     }
 
     __device__ __forceinline__ static void prefetch_tensor_map(const void* desc) {
@@ -80,14 +80,14 @@ struct TMA {
     }
 
     __device__ __forceinline__ static void load_2d(
-        void* dst, const void* desc, uint32_t* mbar, uint2 coord) {
+        void* dst, const void* desc, uint32_t* mbar, uint32_t crd0, uint32_t crd1) {
         uint64_t gmem_desc = reinterpret_cast<uint64_t>(desc);
         uint32_t dst_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(dst));
 
         asm volatile("cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes"
                      " [%0], [%1, {%3, %4}], [%2];" ::"r"(dst_ptr),
-            "l"(gmem_desc), "l"(__cvta_generic_to_shared(mbar)), "r"(coord.x), "r"(coord.y)
-            : "memory");
+                     "l"(gmem_desc), "l"(__cvta_generic_to_shared(mbar)), "r"(crd0), "r"(crd1)
+                     : "memory");
     }
 
     __device__ __forceinline__ static void store_1d(void* dst, const void* src, uint32_t nBytes) {
@@ -98,25 +98,30 @@ struct TMA {
         uint64_t dst_ptr = reinterpret_cast<uint64_t>(dst);
         asm volatile("cp.async.bulk.global.shared::cta.bulk_group "
                      "[%0], [%1], %2;\n"
-            :
-            : "l"(dst_ptr), "l"(__cvta_generic_to_shared(src)), "r"(nBytes));
+                     :
+                     : "l"(dst_ptr), "l"(__cvta_generic_to_shared(src)), "r"(nBytes));
     }
 
-    __device__ __forceinline__ static void store_2d(const void* desc, void* src, uint2 coord) {
+    __device__ __forceinline__ static void store_2d(
+        const void* desc, void* src, uint32_t crd0, uint32_t crd1) {
         uint64_t gmem_desc = reinterpret_cast<uint64_t>(desc);
         uint32_t src_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(src));
         asm volatile("cp.async.bulk.tensor.2d.global.shared::cta.bulk_group [%0, {%2, %3}], [%1];"
-            :
-            : "l"(gmem_desc), "r"(src_ptr), "r"(coord.y), "r"(coord.x)
-            : "memory");
+                     :
+                     : "l"(gmem_desc), "r"(src_ptr), "r"(crd0), "r"(crd1)
+                     : "memory");
     }
 
-    __device__ __forceinline__ static void commit_group() {
+    __device__ __forceinline__ static void tma_commit_group() {
         asm volatile("cp.async.bulk.commit_group;");
     }
 
-    template <int N = 0> __device__ __forceinline__ static void store_async_wait() {
-        asm volatile("cp.async.bulk.wait_group %0;" : : "n"(N) : "memory");
+    __device__ __forceinline__ static void tma_store_fence() {
+        asm volatile("fence.proxy.async.shared::cta;");
+    }
+
+    template <int N = 0> __device__ __forceinline__ static void tma_store_wait() {
+        asm volatile("cp.async.bulk.wait_group.read %0;" : : "n"(N) : "memory");
     }
 };
 

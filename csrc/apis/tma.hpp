@@ -15,7 +15,7 @@ class TMARuntime final : public LaunchRuntime<TMARuntime> {
 public:
     struct Args {
         LaunchArgs launch_args;
-        uint32_t num_blocks;
+        uint32_t num_sms;
         uint32_t num_warps_per_block;
         uint32_t num_consumers, num_producers;
         uint32_t num_stages;
@@ -42,7 +42,7 @@ public:
         >);
     }};
     )",
-            args.num_blocks, args.num_warps_per_block, args.num_consumers, args.num_producers,
+            args.num_sms, args.num_warps_per_block, args.num_consumers, args.num_producers,
             args.num_stages, args.m, args.n, args.block_m, args.block_n, args.swizzle_mode);
     }
 
@@ -98,6 +98,11 @@ namespace tma {
             static_cast<cuuint64_t>(gmem_stride * elem_size),
         };
         const cuuint32_t elem_strides[2] = {1, 1};
+        // printf("Making TMA desc: global memory: %d %d, shared memory: %d %d, outer stride: %d, "
+        //        "swizzle: %d, elem size: %d\n",
+        //     gmem_inner_dim, gmem_outer_dim, smem_inner_dim, smem_outer_dim, gmem_stride,
+        //     swizzle_mode, elem_size);
+
         K_CUDA_DRIVER_CHECK(
             cuTensorMapEncodeTiled(&map, aten_dtype_to_tensor_map_dtype(x.scalar_type()), 2,
                 x.data_ptr(), gmem_dims, gmem_strides, smem_dims, elem_strides,
@@ -110,7 +115,7 @@ namespace tma {
         // launch 70 blocks for persistent kernel, and 4 warps to form a warp group
         // which two of them are consumers, and two of them are producers
         uint32_t num_stages = 4, num_consumers = 1, num_producers = 1;
-        uint32_t num_blocks = 70, num_warps_per_block = num_consumers + num_producers;
+        uint32_t num_sms = 70, num_warps_per_block = num_consumers + num_producers;
         const uint32_t m = x.size(0), n = x.size(1);
         const uint32_t block_m = 64, block_n = 64;
 
@@ -123,8 +128,8 @@ namespace tma {
 
         uint32_t smem_size = num_stages * block_m * block_n * 2 * 2 + 1024;
         const TMARuntime::Args args{
-            .launch_args = LaunchArgs(num_blocks, num_warps_per_block * 32, smem_size),
-            .num_blocks = num_blocks,
+            .launch_args = LaunchArgs(num_sms, num_warps_per_block * 32, smem_size),
+            .num_sms = num_sms,
             .num_warps_per_block = num_warps_per_block,
             .num_consumers = num_consumers,
             .num_producers = num_producers,

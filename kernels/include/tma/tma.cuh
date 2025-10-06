@@ -10,7 +10,7 @@
 
 namespace kernels::tma {
 
-template <uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN, uint32_t NumBlocks,
+template <uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN, uint32_t NumSMs,
     uint32_t NumStages>
 struct Scheduler {
     explicit __device__ Scheduler() {
@@ -18,8 +18,12 @@ struct Scheduler {
         num_n_blocks = utils::ceil_div(N, BlockN);
         num_blocks = num_m_blocks * num_n_blocks;
         current_block = blockIdx.x;
-        current_iter = 0;
         stage_id = 0;
+#pragma unroll
+        for (int i = 0; i < NumStages; i++) {
+            phase[i] = -1;
+        }
+        phase[stage_id] = 0;
     }
     __device__ __forceinline__ bool current_work_tile(uint32_t& m_idx, uint32_t& n_idx) const {
         if (current_block >= num_blocks) {
@@ -30,19 +34,20 @@ struct Scheduler {
         return true;
     }
     __device__ __forceinline__ void step() {
-        current_block += NumBlocks;
-        current_iter++;
+        current_block += NumSMs;
         stage_id = (stage_id + 1) % NumStages;
+        phase[stage_id] = (phase[stage_id] + 1) & 1;
     }
 
     uint32_t num_blocks, num_m_blocks, num_n_blocks;
     uint32_t current_block;
-    int current_iter, stage_id;
+    int stage_id;
+    int phase[NumStages];
 };
 
-template <uint32_t NumBlocks, uint32_t NumWarpsPerBlock, uint32_t NumConsumers,
-    uint32_t NumProducers, uint32_t NumStages, uint32_t M, uint32_t N, uint32_t BlockM,
-    uint32_t BlockN, uint32_t SwizzleMode>
+template <uint32_t NumSMs, uint32_t NumWarpsPerBlock, uint32_t NumConsumers, uint32_t NumProducers,
+    uint32_t NumStages, uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN,
+    uint32_t SwizzleMode>
 __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf16* out,
     const __grid_constant__ CUtensorMap tensor_map_x,
     const __grid_constant__ CUtensorMap tensor_map_out) {
@@ -73,13 +78,14 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
     We adopt a warp-specialized producer–consumer design.
     */
     static_assert(NumConsumers + NumProducers == NumWarpsPerBlock);
+    constexpr static auto kNumConsumerThreads = NumConsumers * 32;
+    constexpr static auto kNumProducerThreads = NumProducers * 32;
 
-    if (threadIdx.x == NumConsumers * 32) {
+    if (threadIdx.x == kNumConsumerThreads) {
         async::TMA::prefetch_tensor_map(&tensor_map_x);
         async::TMA::prefetch_tensor_map(&tensor_map_out);
     }
-    // DeepGemm use syncwarp to synchronize the threads, I don't know why
-    __syncwarp();
+    __syncthreads();
 
     // Initialize multi-stage shared memory
     extern __shared__ __align__(1024) uint8_t smem_buffer[];
@@ -104,7 +110,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
         empty_barrier[i] = barrier_ptr + NumStages + i;
     }
 
-    if (threadIdx.x == NumConsumers * 32) {
+    if (threadIdx.x == kNumConsumerThreads) {
 #pragma unroll
         for (int i = 0; i < NumStages; i++) {
             // Initialize with 1 because a single elected thread issues TMA operations.
@@ -113,82 +119,52 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
             full_barrier[i]->init(1);
             empty_barrier[i]->init(NumConsumers);
         }
-        asm volatile("fence.proxy.async.shared::cta; \n" ::);
-        asm volatile("fence.mbarrier_init.release.cluster; \n" ::);
+        // Make initialized barriers visible to the async proxy
+        cutlass::arch::fence_view_async_shared();
+        cutlass::arch::fence_barrier_init();
     }
     __syncthreads();
 
-    constexpr static uint32_t NumElemPerThread = 4;
-    using tma_strategy = TmaStrategyV1<NumElemPerThread, BlockM, BlockN, M, N>;
+    using tma_strategy = TmaStrategyV2<4, BlockM, BlockN, M, N>;
 
-    uint32_t warp_id = runtime::warpid();
+    uint32_t warp_id = runtime::warpid(), lane_id = runtime::laneid();
     if (warp_id >= NumConsumers) {
         // Producer
-        Scheduler<M, N, BlockM, BlockN, NumBlocks, NumStages> scheduler;
+        Scheduler<M, N, BlockM, BlockN, NumSMs, NumStages> scheduler;
         uint32_t m_idx, n_idx;
-        // Elect a single thread to perform wait/arrive and to issue TMA instructions
-        // we can use elect one sync just because producer warp is one
-        if (not runtime::elect_one_sync()) {
-            return;
-        }
-        while (scheduler.current_work_tile(m_idx, n_idx)) {
-            empty_barrier[scheduler.stage_id]->wait((scheduler.current_iter + 1) & 1);
-            // Load a BlockM x BlockN tile into shared memory via TMA.
-            // One thread triggers the TMA instruction on dedicated hardware.
-            // Using `cp.async.bulk` (not `cp.async.bulk.tensor`), so no tensor map is required,
-            // but we are limited to 1D contiguous bytes per call.
-
-            // We therefore issue all TMA operations from a single elected thread.
-            // This also mirrors the common pattern with cp.async when comparing per-thread
-            // issuance versus a single issuer.
-            // full_barrier[scheduler.stage_id]->arrive();
-            auto* barrier_ptr = reinterpret_cast<uint32_t*>(full_barrier[scheduler.stage_id]);
-            tma_strategy::tma_async_load(
-                smem_x[scheduler.stage_id], x, barrier_ptr, m_idx, n_idx, tensor_map_x);
-
-            full_barrier[scheduler.stage_id]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
-            scheduler.step();
+        // Elect a single thread to perform wait/arrive operations and issue TMA instructions.
+        // We use elect_one_sync here because there is only one producer warp.
+        if (threadIdx.x < kNumConsumerThreads + 32 and runtime::elect_one_sync()) {
+            while (scheduler.current_work_tile(m_idx, n_idx)) {
+                int s = scheduler.stage_id, phase = scheduler.phase[s];
+                empty_barrier[s]->wait((phase + 1) & 1);
+                // We therefore issue all TMA operations from a single elected thread.
+                // This also mirrors the common pattern with cp.async when comparing per-thread
+                // issuance versus a single issuer.
+                // full_barrier[s]->arrive();
+                auto* barrier_ptr = reinterpret_cast<uint32_t*>(full_barrier[s]);
+                // Important: Pass &tensor_map_x (address) rather than tensor_map_x itself.
+                // Taking the address later in tma_strategy::tma_async_load causes illegal memory
+                // access. This is likely related to the prefetch_tma_descriptor call above.
+                tma_strategy::tma_async_load(
+                    smem_x[s], x, barrier_ptr, n_idx, m_idx, &tensor_map_x);
+                full_barrier[s]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
+                scheduler.step();
+            }
         }
     } else {
         // Consumer
-        bool is_first_ok = false;
-        bool is_first_wrong = false;
-        Scheduler<M, N, BlockM, BlockN, NumBlocks, NumStages> scheduler;
+        Scheduler<M, N, BlockM, BlockN, NumSMs, NumStages> scheduler;
         uint32_t m_idx, n_idx;
         while (scheduler.current_work_tile(m_idx, n_idx)) {
-            full_barrier[scheduler.stage_id]->wait(scheduler.current_iter & 1);
-            // if (runtime::elect_one_sync()) {
-            //     for (int i = 0; i < BlockM; i++) {
-            //         for (int j = 0; j < BlockN; j++) {
-            //             float smem_x_val =
-            //                 __bfloat162float(smem_x[scheduler.stage_id][i * BlockN + j]);
-            //             float x_val =
-            //                 __bfloat162float(x[(m_idx * BlockM + i) * N + n_idx * BlockN + j]);
-            //             if (smem_x_val != x_val && !is_first_wrong) {
-            //                 is_first_wrong = true;
-            //                 printf("Error at %d, %d\n", i, j);
-            //             } else if (smem_x_val == x_val && !is_first_ok) {
-            //                 is_first_ok = true;
-            //                 printf("Success at %d, %d\n", i, j);
-            //             }
-            //         }
-            //     }
-            // }
-            // Compute using data resident in shared memory
-
-            // Each thread processes 2 bf16 elements per register lane (NumElemPerThread = 4
-            // bf16_2). Compute y = 2 * x + 1 in registers, store results to shared memory, then use
-            // TMA to store the results to global memory. Note: routing through shared memory is
-            // slower than writing registers directly to global; this path is used here to
-            // demonstrate TMA store.
-            tma_strategy::compute_and_store(smem_x[scheduler.stage_id], smem_y[scheduler.stage_id],
-                out, m_idx, n_idx, tensor_map_out);
-            // can use elect one sync just because consumer warp is one
-            asm volatile("fence.proxy.async.shared::cta; \n" ::);
+            int s = scheduler.stage_id, phase = scheduler.phase[s];
+            full_barrier[s]->wait(phase & 1);
+            tma_strategy::compute_and_store(
+                smem_x[s], smem_y[s], out, n_idx, m_idx, &tensor_map_out);
+            // Use elect_one_sync here because there is only one consumer warp
             if (runtime::elect_one_sync()) {
-                empty_barrier[scheduler.stage_id]->arrive();
+                empty_barrier[s]->arrive();
             }
-
             scheduler.step();
         }
     }

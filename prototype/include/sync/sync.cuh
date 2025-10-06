@@ -57,8 +57,8 @@ struct MBarrier {
                      "mbarrier.test_wait.parity.shared::cta.b64 P1, [%1], %2;\n"
                      "selp.u32 %0,1,0,P1;"
                      "}\n"
-            : "=r"(result)
-            : "r"(mbar_ptr), "r"(phase));
+                     : "=r"(result)
+                     : "r"(mbar_ptr), "r"(phase));
         return result;
     }
 

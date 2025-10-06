@@ -129,7 +129,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
         constexpr uint32_t bytes = NumElemPerThread * sizeof(bf16_2);
 #pragma unroll
         for (uint32_t offset = runtime::laneid() * NumElemPerThread; offset < BlockM * BlockN / 2;
-            offset += NumElemPerThread * 32) {
+             offset += NumElemPerThread * 32) {
             uint32_t glo_x = offset / (BlockN / 2), glo_y = offset % (BlockN / 2) * 2;
             uint32_t global_offs = scheduler.global_offs(m * BlockM + glo_x, n * BlockN + glo_y);
             async::CpAsync::call<bytes, async::CpAsync::CacheOperator::OpCG>(
@@ -166,7 +166,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
 #endif
 #pragma unroll
         for (uint32_t i = runtime::laneid() * NumElemPerThread; i < BlockM * BlockN / 2;
-            i += NumElemPerThread * 32) {
+             i += NumElemPerThread * 32) {
             regs.load(smem_x[scheduler.stage_id][runtime::warpid()], i);
             regs.compute();
             uint32_t glo_x = i / (BlockN / 2), glo_y = i % (BlockN / 2) * 2;
