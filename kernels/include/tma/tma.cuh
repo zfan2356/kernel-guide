@@ -170,8 +170,8 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
             const uint32_t s = scheduler.stage_id();
             const int current_phase = scheduler.phase(s);
             full_barrier[s]->wait(current_phase & 1);
-            tma_strategy::compute_and_store(
-                smem_x[s], smem_y[s], out, n_idx, m_idx, &tensor_map_out);
+            // tma_strategy::compute_and_store(
+            //     smem_x[s], smem_y[s], out, n_idx, m_idx, &tensor_map_out);
             // Use elect_one_sync here because there is only one consumer warp
             if (runtime::elect_one_sync()) {
                 empty_barrier[s]->arrive();

@@ -2,7 +2,7 @@
 
 ## Overall
 
-This project implements CUDA kernels (maybe cpp or CuteDSL) to learn how to utilize advanced features such as `TMA`, `WGMMA`, and other cutting-edge techniques.
+This project implements CUDA kernels (maybe cpp or CuteDSL) to learn how to utilize advanced features such as `CP.Async`, `ld.matrix`, `MMA`, `TMA`, `WGMMA`, and other **cutting-edge** techniques.
 
 Additionally, this project includes simple kernels that are compiled to `PTX` to help understand PTX instructions.
 
@@ -11,13 +11,15 @@ project also provide a general template for customizing some CUDA operators to i
 ## Use Way
 
 ```python
-git submodule update --init --recursive
+git clone https://github.com/zfan2356/kernel-guide.git --recursive
 pip install -e .
-python -m unittest tests/test_hello.py
+bash develop.sh
+python tests/test_hello.py
 ```
 
 ## Envirenment
 
+- Hopper GPU Arch: H20/H800...
 - CUDA 12.9
 - python 3.12
 
@@ -25,7 +27,7 @@ python -m unittest tests/test_hello.py
 
 ### CPP Kernels
 
-- [x] CP Async: 1d Asynchronize Load
+- [x] CP Async: 1D Asynchronize Load
 
 ```
 cp.async;
@@ -33,16 +35,23 @@ cp.async.commit_group;
 cp.async.wait_group;
 ```
 
-- [ ] ld.matrix + MMA
+- [ ] ld.matrix, st.matrix, MMA
 
-- [x] TMA: 1d Asynchronize Load and Store
+- [x] TMA: 1D Asynchronize Load and Store
 
 ```
 cp.async.bulk.mbarrier::complete_tx::bytes;
 cp.async.bulk.bulk_group;
 ```
 
-- [ ] TMA Swizzle
+- [x] TMA 2D Asychronize Load and Store
+
+```
+cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes
+cp.async.bulk.tensor.2d.global.shared::cta.bulk_group
+```
+
+- [ ] TMA 2D Swizzle 16/32/64/128B
 
 - [ ] Hopper WGMMA
 

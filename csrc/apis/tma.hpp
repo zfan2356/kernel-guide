@@ -85,8 +85,15 @@ namespace tma {
         uint32_t gmem_stride = x.stride(-2);
 
         const auto& elem_size = static_cast<int>(x.element_size());
-        if (swizzle_mode != 0) {
-            smem_inner_dim = swizzle_mode / elem_size;
+        // Adjust shared-memory inner dimension when using swizzle. For swizzle sizes
+        // (32B/64B/128B), the SMEM box inner dimension must equal swizzle_bytes / elem_size.
+        const auto chosen_swizzle = mode_into_tensor_map_swizzle(swizzle_mode);
+        if (chosen_swizzle != CU_TENSOR_MAP_SWIZZLE_NONE) {
+            K_HOST_ASSERT(swizzle_mode % static_cast<uint32_t>(elem_size) == 0);
+            const uint32_t swizzle_elems = swizzle_mode / static_cast<uint32_t>(elem_size);
+            K_HOST_ASSERT(block_n % swizzle_elems == 0 &&
+                          "block_n must be a multiple of swizzle width in elements");
+            smem_inner_dim = swizzle_elems;
         }
         CUtensorMap map{};
         // notes the data type
@@ -98,16 +105,15 @@ namespace tma {
             static_cast<cuuint64_t>(gmem_stride * elem_size),
         };
         const cuuint32_t elem_strides[2] = {1, 1};
-        // printf("Making TMA desc: global memory: %d %d, shared memory: %d %d, outer stride: %d, "
-        //        "swizzle: %d, elem size: %d\n",
-        //     gmem_inner_dim, gmem_outer_dim, smem_inner_dim, smem_outer_dim, gmem_stride,
-        //     swizzle_mode, elem_size);
+        printf("Making TMA desc: global memory: %d %d, shared memory: %d %d, outer stride: %d, "
+               "swizzle: %d, elem size: %d\n",
+            gmem_inner_dim, gmem_outer_dim, smem_inner_dim, smem_outer_dim, gmem_stride,
+            swizzle_mode, elem_size);
 
-        K_CUDA_DRIVER_CHECK(
-            cuTensorMapEncodeTiled(&map, aten_dtype_to_tensor_map_dtype(x.scalar_type()), 2,
-                x.data_ptr(), gmem_dims, gmem_strides, smem_dims, elem_strides,
-                CU_TENSOR_MAP_INTERLEAVE_NONE, mode_into_tensor_map_swizzle(swizzle_mode),
-                CU_TENSOR_MAP_L2_PROMOTION_L2_256B, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE));
+        K_CUDA_DRIVER_CHECK(cuTensorMapEncodeTiled(&map,
+            aten_dtype_to_tensor_map_dtype(x.scalar_type()), 2, x.data_ptr(), gmem_dims,
+            gmem_strides, smem_dims, elem_strides, CU_TENSOR_MAP_INTERLEAVE_NONE, chosen_swizzle,
+            CU_TENSOR_MAP_L2_PROMOTION_L2_256B, CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE));
         return map;
     }
 
