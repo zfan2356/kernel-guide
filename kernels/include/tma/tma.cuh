@@ -13,36 +13,45 @@ namespace kernels::tma {
 template <uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN, uint32_t NumSMs,
     uint32_t NumStages>
 struct Scheduler {
-    explicit __device__ Scheduler() {
-        num_m_blocks = utils::ceil_div(M, BlockM);
-        num_n_blocks = utils::ceil_div(N, BlockN);
-        num_blocks = num_m_blocks * num_n_blocks;
-        current_block = blockIdx.x;
-        stage_id = 0;
+    static constexpr uint32_t kNumMBlocks = utils::ceil_div(M, BlockM);
+    static constexpr uint32_t kNumNBlocks = utils::ceil_div(N, BlockN);
+    static constexpr uint32_t kTotalBlocks = kNumMBlocks * kNumNBlocks;
+
+    __device__ Scheduler() : current_block_(blockIdx.x), stage_id_(0), phases_{} {
+        // Initialize all phases to -1, except the first stage which starts at 0
 #pragma unroll
-        for (int i = 0; i < NumStages; i++) {
-            phase[i] = -1;
+        for (uint32_t i = 0; i < NumStages; ++i) {
+            phases_[i] = -1;
         }
-        phase[stage_id] = 0;
-    }
-    __device__ __forceinline__ bool current_work_tile(uint32_t& m_idx, uint32_t& n_idx) const {
-        if (current_block >= num_blocks) {
-            return false;
-        }
-        m_idx = current_block / num_n_blocks;
-        n_idx = current_block % num_n_blocks;
-        return true;
-    }
-    __device__ __forceinline__ void step() {
-        current_block += NumSMs;
-        stage_id = (stage_id + 1) % NumStages;
-        phase[stage_id] = (phase[stage_id] + 1) & 1;
+        phases_[0] = 0;
     }
 
-    uint32_t num_blocks, num_m_blocks, num_n_blocks;
-    uint32_t current_block;
-    int stage_id;
-    int phase[NumStages];
+    __device__ __forceinline__ bool get_current_tile(uint32_t& m_idx, uint32_t& n_idx) const {
+        if (current_block_ >= kTotalBlocks) {
+            return false;
+        }
+        m_idx = current_block_ / kNumNBlocks;
+        n_idx = current_block_ % kNumNBlocks;
+        return true;
+    }
+
+    __device__ __forceinline__ void advance() {
+        current_block_ += NumSMs;
+        stage_id_ = (stage_id_ + 1) % NumStages;
+        phases_[stage_id_] = (phases_[stage_id_] + 1) & 1;
+    }
+
+    __device__ __forceinline__ uint32_t stage_id() const {
+        return stage_id_;
+    }
+    __device__ __forceinline__ int phase(uint32_t stage) const {
+        return phases_[stage];
+    }
+
+private:
+    uint32_t current_block_;
+    uint32_t stage_id_;
+    int phases_[NumStages];
 };
 
 template <uint32_t NumSMs, uint32_t NumWarpsPerBlock, uint32_t NumConsumers, uint32_t NumProducers,
@@ -135,13 +144,14 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
         // Elect a single thread to perform wait/arrive operations and issue TMA instructions.
         // We use elect_one_sync here because there is only one producer warp.
         if (threadIdx.x < kNumConsumerThreads + 32 and runtime::elect_one_sync()) {
-            while (scheduler.current_work_tile(m_idx, n_idx)) {
-                int s = scheduler.stage_id, phase = scheduler.phase[s];
-                empty_barrier[s]->wait((phase + 1) & 1);
+            while (scheduler.get_current_tile(m_idx, n_idx)) {
+                const uint32_t s = scheduler.stage_id();
+                const int current_phase = scheduler.phase(s);
+                empty_barrier[s]->wait((current_phase + 1) & 1);
+
                 // We therefore issue all TMA operations from a single elected thread.
                 // This also mirrors the common pattern with cp.async when comparing per-thread
                 // issuance versus a single issuer.
-                // full_barrier[s]->arrive();
                 auto* barrier_ptr = reinterpret_cast<uint32_t*>(full_barrier[s]);
                 // Important: Pass &tensor_map_x (address) rather than tensor_map_x itself.
                 // Taking the address later in tma_strategy::tma_async_load causes illegal memory
@@ -149,23 +159,24 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
                 tma_strategy::tma_async_load(
                     smem_x[s], x, barrier_ptr, n_idx, m_idx, &tensor_map_x);
                 full_barrier[s]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
-                scheduler.step();
+                scheduler.advance();
             }
         }
     } else {
         // Consumer
         Scheduler<M, N, BlockM, BlockN, NumSMs, NumStages> scheduler;
         uint32_t m_idx, n_idx;
-        while (scheduler.current_work_tile(m_idx, n_idx)) {
-            int s = scheduler.stage_id, phase = scheduler.phase[s];
-            full_barrier[s]->wait(phase & 1);
+        while (scheduler.get_current_tile(m_idx, n_idx)) {
+            const uint32_t s = scheduler.stage_id();
+            const int current_phase = scheduler.phase(s);
+            full_barrier[s]->wait(current_phase & 1);
             tma_strategy::compute_and_store(
                 smem_x[s], smem_y[s], out, n_idx, m_idx, &tensor_map_out);
             // Use elect_one_sync here because there is only one consumer warp
             if (runtime::elect_one_sync()) {
                 empty_barrier[s]->arrive();
             }
-            scheduler.step();
+            scheduler.advance();
         }
     }
 }
