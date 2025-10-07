@@ -37,14 +37,14 @@ cp.async.wait_group;
 
 - [ ] ld.matrix, st.matrix, MMA
 
-- [x] TMA: 1D Asynchronize Load and Store
+- [x] TMA: 1D Asynchronous Load and Store
 
 ```
 cp.async.bulk.mbarrier::complete_tx::bytes;
 cp.async.bulk.bulk_group;
 ```
 
-- [x] TMA 2D Asychronize Load and Store
+- [x] TMA 2D Asynchronous Load and Store
 
 ```
 cp.async.bulk.tensor.2d.shared::cta.global.mbarrier::complete_tx::bytes
