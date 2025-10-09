@@ -6,7 +6,7 @@ This project implements CUDA kernels (maybe cpp or CuteDSL) to learn how to util
 
 Additionally, this project includes simple kernels that are compiled to `PTX` to help understand PTX instructions.
 
-project also provide a general template for customizing some CUDA operators to integrate into your own training/inference framwork to achieve acceleration effects.
+project also provide a general template for customizing some CUDA operators to integrate into your own training/inference framwork to achieve acceleration effects. This Jit Compile powered by DeepGEMM, thanks for deepseek team
 
 ## Use Way
 
