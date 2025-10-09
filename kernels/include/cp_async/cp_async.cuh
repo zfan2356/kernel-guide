@@ -9,7 +9,7 @@ namespace kernels::cpasync {
 using namespace kernels::prototype;
 using bf16_2 = nv_bfloat162;
 
-template <uint32_t NumBlocks, uint32_t NumWarpsPerBlock, uint32_t M, uint32_t N, uint32_t BlockM,
+template <uint32_t NumSMs, uint32_t NumWarpsPerBlock, uint32_t M, uint32_t N, uint32_t BlockM,
     uint32_t BlockN>
 __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
     nv_bfloat16* x, nv_bfloat16* out) {
@@ -33,7 +33,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
     synchronize the threads.
     */
     constexpr static uint32_t NumStages = 2;
-    constexpr static uint32_t NumWarps = NumWarpsPerBlock * NumBlocks;
+    constexpr static uint32_t NumWarps = NumWarpsPerBlock * NumSMs;
 
     // first, we need init a multi-stage shared memory
     // we use nv_bfloat162 to utilize the 32-bit register
