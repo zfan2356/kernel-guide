@@ -67,7 +67,8 @@ namespace cpasync {
             .out = out,
         };
         const auto& code = CpAsyncRuntime::generate(args);
-        const auto& runtime = compiler->build("cp_async_test", code);
+        const std::string ptx_path = "include/cp_async/cp_async.ptx";
+        const auto& runtime = compiler->build("cp_async_test", code, ptx_path);
         CpAsyncRuntime::launch(runtime, args);
     }
 

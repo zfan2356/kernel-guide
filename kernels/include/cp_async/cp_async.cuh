@@ -127,7 +127,7 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
         static_assert((BlockM * (BlockN / 2)) % (NumElemPerThread * 32) == 0,
             "BlockM * BlockN must be divisible by NumElemPerThread * 32");
         constexpr uint32_t bytes = NumElemPerThread * sizeof(bf16_2);
-#pragma unroll
+        #pragma unroll
         for (uint32_t offset = runtime::laneid() * NumElemPerThread; offset < BlockM * BlockN / 2;
              offset += NumElemPerThread * 32) {
             uint32_t glo_x = offset / (BlockN / 2), glo_y = offset % (BlockN / 2) * 2;
@@ -155,16 +155,15 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void cp_async_impl(
         // in the docs says that there is no ordering guarantee between two cp.async operations
         // so, we need wait all the async load instructions
         async::CpAsync::wait_group<0>();
-
         if (scheduler.next_work_tile(next_m_idx, next_n_idx)) {
-            // we can before compute the current tile data, prefetch the next tile data
-            // use cp.async
+            // we can before compute the current tile data
+            // and prefetch the next tile data, use cp.async
             launch_cp_async_v2(next_m_idx, next_n_idx, scheduler.next_stage());
         }
         // load data from shared memory to register, now problem is warp-level
         // we need load data from shared memory to register
 #endif
-#pragma unroll
+        #pragma unroll
         for (uint32_t i = runtime::laneid() * NumElemPerThread; i < BlockM * BlockN / 2;
              i += NumElemPerThread * 32) {
             regs.load(smem_x[scheduler.stage_id][runtime::warpid()], i);

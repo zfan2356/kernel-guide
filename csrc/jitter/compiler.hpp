@@ -96,7 +96,8 @@ public:
         std::filesystem::rename(tmp_file_path, path);
     }
 
-    std::shared_ptr<KernelRuntime> build(const std::string& name, const std::string& code) const {
+    std::shared_ptr<KernelRuntime> build(
+        const std::string& name, const std::string& code, const std::string& ptx_path = "") const {
         const auto kernel_signature =
             fmt::format("{}$${}$${}$${}$${}", name, library_version, signature, flags, code);
         const auto dir_path = cache_dir_path / "cache" /
@@ -118,6 +119,20 @@ public:
         // Replace into the cache directory
         make_dirs(dir_path);
         std::filesystem::rename(tmp_cubin_path, dir_path / "kernel.cubin");
+
+        // Copy generated PTX to the provided directory path (if any)
+        if (!ptx_path.empty()) {
+            const auto& generated_ptx = dir_path / "kernel.ptx";
+            if (std::filesystem::exists(generated_ptx)) {
+                const std::filesystem::path dst_dir = library_root_path / ptx_path;
+                printf("ptx file path: %s\n", dst_dir.c_str());
+                make_dirs(dst_dir);
+                const auto& dst_ptx = dst_dir;
+                const bool copied = std::filesystem::copy_file(
+                    generated_ptx, dst_ptx, std::filesystem::copy_options::overwrite_existing);
+                K_HOST_ASSERT(copied && "Failed to copy kernel.ptx to destination path");
+            }
+        }
 
         // Put into the runtime cache
         const auto& runtime = kernel_runtime_cache->get(dir_path);
@@ -200,7 +215,7 @@ public:
         const auto& code_path = dir_path / "kernel.cu";
         put(code_path, code);
 
-        // Compile
+        // Compile CUBIN
         const auto& command = fmt::format(
             "{} {} -o {} {}", nvcc_path.c_str(), code_path.c_str(), cubin_path.c_str(), flags);
         printf("Running NVCC command: %s\n", command.c_str());
@@ -211,6 +226,20 @@ public:
         }
 
         printf("%s", output.c_str());
+
+        // Also emit PTX next to the source code
+        const auto& ptx_path = dir_path / "kernel.ptx";
+        const auto& ptx_flags = std::regex_replace(flags, std::regex("-cubin"), "-ptx");
+        const auto& ptx_command = fmt::format(
+            "{} {} -o {} {}", nvcc_path.c_str(), code_path.c_str(), ptx_path.c_str(), ptx_flags);
+        printf("Running NVCC command: %s\n", ptx_command.c_str());
+        const auto& [ptx_return_code, ptx_output] = call_external_command(ptx_command);
+        if (ptx_return_code != 0) {
+            printf("NVCC PTX generation failed: %s\n", ptx_output.c_str());
+            K_HOST_ASSERT(false and "NVCC PTX generation failed");
+        }
+
+        printf("%s", ptx_output.c_str());
     }
 };
 

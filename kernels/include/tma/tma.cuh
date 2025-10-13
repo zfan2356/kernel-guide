@@ -106,21 +106,21 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
     Barrier* empty_barrier[NumStages];
     Barrier* full_barrier[NumStages];
 
-#pragma unroll
+    #pragma unroll
     for (int i = 0; i < NumStages; i++) {
         smem_x[i] = reinterpret_cast<bf16*>(smem_buffer + i * SMEM_SIZE);
         smem_y[i] = reinterpret_cast<bf16*>(smem_buffer + NumStages * SMEM_SIZE + i * SMEM_SIZE);
     }
 
     auto barrier_ptr = reinterpret_cast<Barrier*>(smem_buffer + NumStages * SMEM_SIZE * 2);
-#pragma unroll
+    #pragma unroll
     for (int i = 0; i < NumStages; i++) {
         full_barrier[i] = barrier_ptr + i;
         empty_barrier[i] = barrier_ptr + NumStages + i;
     }
 
     if (threadIdx.x == kNumConsumerThreads) {
-#pragma unroll
+        #pragma unroll
         for (int i = 0; i < NumStages; i++) {
             // Initialize with 1 because a single elected thread issues TMA operations.
             // TMA is dedicated hardware; its throughput does not depend on how many

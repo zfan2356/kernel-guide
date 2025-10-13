@@ -79,7 +79,7 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
         uint32_t crd0, uint32_t crd1, const void* tensor_map) {
         Register regs;
         // Perform computation within a single warp
-#pragma unroll
+        #pragma unroll
         for (int i = runtime::laneid() * NumElem * 2; i < BlockM * BlockN; i += NumElem * 32 * 2) {
             regs.load(smem_x, i);
             regs.compute();
@@ -89,7 +89,7 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
 
         if (runtime::elect_one_sync()) {
             auto global_offset = (crd0 * BlockM) * N + crd1 * BlockN;
-#pragma unroll
+            #pragma unroll
             for (uint32_t i = 0; i < BlockM; i++) {
                 bf16* smem_y_ptr = smem_y + i * BlockN;
                 async::TMA::store_1d(
@@ -143,7 +143,7 @@ struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<NumElem, BlockM, BlockN,
         }
         crd0 *= BlockN, crd1 *= BlockM;
         Register regs;
-#pragma unroll
+        #pragma unroll
         for (int i = runtime::laneid() * NumElem * 2; i < BlockM * BlockN; i += NumElem * 32 * 2) {
             regs.load(smem_x, i);
             regs.compute();
