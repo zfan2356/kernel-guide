@@ -5,7 +5,7 @@
 #include <cuda_bf16.h>
 #include "prototype.cuh"
 #include "tma/strategy.cuh"
-
+#include "utils/util.cuh"
 #include <cutlass/arch/barrier.h>
 
 namespace kernels::tma {

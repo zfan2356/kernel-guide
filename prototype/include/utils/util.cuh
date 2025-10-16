@@ -11,4 +11,14 @@ __host__ __device__ __forceinline__ static constexpr uint32_t ceil_div(uint32_t 
     return (a + b - 1) / b;
 }
 
+template <class FuncT>
+struct PattenVisitor {
+    FuncT func;
+    __device__ __host__ __forceinline__ explicit PattenVisitor(FuncT&& _func) : func(std::forward<FuncT>(_func)) {}
+    __device__ __host__ __forceinline__ auto operator[](const uint32_t& i) {
+        return func(i);
+    }
+};
+
+
 } // namespace kernels::prototype::utils
