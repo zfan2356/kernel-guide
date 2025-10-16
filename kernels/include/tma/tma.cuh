@@ -5,13 +5,13 @@
 #include <cuda_bf16.h>
 #include "prototype.cuh"
 #include "tma/strategy.cuh"
-
+#include "utils/util.cuh"
 #include <cutlass/arch/barrier.h>
 
 namespace kernels::tma {
 
-template <uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN, uint32_t NumSMs,
-    uint32_t NumStages>
+template <uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN, uint32_t kNumSMs,
+    uint32_t kNumStages>
 struct Scheduler {
     static constexpr uint32_t kNumMBlocks = utils::ceil_div(M, BlockM);
     static constexpr uint32_t kNumNBlocks = utils::ceil_div(N, BlockN);
@@ -19,8 +19,8 @@ struct Scheduler {
 
     __device__ Scheduler() : current_block_(blockIdx.x), stage_id_(0), phases_{} {
         // Initialize all phases to -1, except the first stage which starts at 0
-#pragma unroll
-        for (uint32_t i = 0; i < NumStages; ++i) {
+        #pragma unroll
+        for (uint32_t i = 0; i < kNumStages; ++i) {
             phases_[i] = -1;
         }
         phases_[0] = 0;
@@ -36,8 +36,8 @@ struct Scheduler {
     }
 
     __device__ __forceinline__ void advance() {
-        current_block_ += NumSMs;
-        stage_id_ = (stage_id_ + 1) % NumStages;
+        current_block_ += kNumSMs;
+        stage_id_ = (stage_id_ + 1) % kNumStages;
         phases_[stage_id_] = (phases_[stage_id_] + 1) & 1;
     }
 
@@ -51,13 +51,13 @@ struct Scheduler {
 private:
     uint32_t current_block_;
     uint32_t stage_id_;
-    int phases_[NumStages];
+    int phases_[kNumStages];
 };
 
-template <uint32_t NumSMs, uint32_t NumWarpsPerBlock, uint32_t NumConsumers, uint32_t NumProducers,
-    uint32_t NumStages, uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN,
+template <uint32_t kNumSMs, uint32_t kNumWarpsPerBlock, uint32_t kNumConsumers, uint32_t kNumProducers,
+    uint32_t kNumStages, uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN,
     uint32_t SwizzleMode>
-__global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf16* out,
+__global__ __launch_bounds__(kNumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf16* out,
     const __grid_constant__ CUtensorMap tensor_map_x,
     const __grid_constant__ CUtensorMap tensor_map_out) {
     /*
@@ -86,47 +86,45 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
 
     We adopt a warp-specialized producer–consumer design.
     */
-    static_assert(NumConsumers + NumProducers == NumWarpsPerBlock);
-    constexpr static auto kNumConsumerThreads = NumConsumers * 32;
-    constexpr static auto kNumProducerThreads = NumProducers * 32;
+    static_assert(kNumConsumers + kNumProducers == kNumWarpsPerBlock);
+    constexpr static auto kNumConsumerThreads = kNumConsumers * 32;
+    constexpr static auto kNumProducerThreads = kNumProducers * 32;
 
     if (threadIdx.x == kNumConsumerThreads) {
         async::TMA::prefetch_tensor_map(&tensor_map_x);
         async::TMA::prefetch_tensor_map(&tensor_map_out);
     }
-    __syncthreads();
+    // thinking...
+    __syncwarp();
 
     // Initialize multi-stage shared memory
     extern __shared__ __align__(1024) uint8_t smem_buffer[];
     constexpr static auto SMEM_SIZE = BlockM * BlockN * sizeof(bf16);
     static_assert(SMEM_SIZE % 1024 == 0, "SMEM_SIZE must be aligned to 1024");
 
-    bf16* smem_x[NumStages];
-    bf16* smem_y[NumStages];
-    Barrier* empty_barrier[NumStages];
-    Barrier* full_barrier[NumStages];
+    auto smem_x = utils::PattenVisitor([&](int i) {
+        return reinterpret_cast<bf16*>(smem_buffer + i * SMEM_SIZE);
+    });
+    auto smem_y = utils::PattenVisitor([&](int i) {
+        return reinterpret_cast<bf16*>(smem_buffer + kNumStages * SMEM_SIZE + i * SMEM_SIZE);
+    });
 
-    #pragma unroll
-    for (int i = 0; i < NumStages; i++) {
-        smem_x[i] = reinterpret_cast<bf16*>(smem_buffer + i * SMEM_SIZE);
-        smem_y[i] = reinterpret_cast<bf16*>(smem_buffer + NumStages * SMEM_SIZE + i * SMEM_SIZE);
-    }
-
-    auto barrier_ptr = reinterpret_cast<Barrier*>(smem_buffer + NumStages * SMEM_SIZE * 2);
-    #pragma unroll
-    for (int i = 0; i < NumStages; i++) {
-        full_barrier[i] = barrier_ptr + i;
-        empty_barrier[i] = barrier_ptr + NumStages + i;
-    }
+    auto barrier_ptr = reinterpret_cast<Barrier*>(smem_buffer + kNumStages * SMEM_SIZE * 2);
+    auto full_barrier = utils::PattenVisitor([&](int i) {
+        return barrier_ptr + i;
+    });
+    auto empty_barrier = utils::PattenVisitor([&](int i) {
+        return barrier_ptr + kNumStages + i;
+    });
 
     if (threadIdx.x == kNumConsumerThreads) {
         #pragma unroll
-        for (int i = 0; i < NumStages; i++) {
+        for (int i = 0; i < kNumStages; i++) {
             // Initialize with 1 because a single elected thread issues TMA operations.
             // TMA is dedicated hardware; its throughput does not depend on how many
             // threads attempt to issue the operation.
             full_barrier[i]->init(1);
-            empty_barrier[i]->init(NumConsumers);
+            empty_barrier[i]->init(kNumConsumers);
         }
         // Make initialized barriers visible to the async proxy
         cutlass::arch::fence_view_async_shared();
@@ -137,9 +135,9 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
     using tma_strategy = TmaStrategyV2<4, BlockM, BlockN, M, N>;
 
     uint32_t warp_id = runtime::warpid(), lane_id = runtime::laneid();
-    if (warp_id >= NumConsumers) {
+    if (warp_id >= kNumConsumers) {
         // Producer
-        Scheduler<M, N, BlockM, BlockN, NumSMs, NumStages> scheduler;
+        Scheduler<M, N, BlockM, BlockN, kNumSMs, kNumStages> scheduler;
         uint32_t m_idx, n_idx;
         // Elect a single thread to perform wait/arrive operations and issue TMA instructions.
         // We use elect_one_sync here because there is only one producer warp.
@@ -157,21 +155,25 @@ __global__ __launch_bounds__(NumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf
                 // Taking the address later in tma_strategy::tma_async_load causes illegal memory
                 // access. This is likely related to the prefetch_tma_descriptor call above.
                 tma_strategy::tma_async_load(
-                    smem_x[s], x, barrier_ptr, n_idx, m_idx, &tensor_map_x);
+                    smem_x[s], x, barrier_ptr,
+                    n_idx, m_idx, &tensor_map_x
+                );
                 full_barrier[s]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
                 scheduler.advance();
             }
         }
     } else {
         // Consumer
-        Scheduler<M, N, BlockM, BlockN, NumSMs, NumStages> scheduler;
+        Scheduler<M, N, BlockM, BlockN, kNumSMs, kNumStages> scheduler;
         uint32_t m_idx, n_idx;
         while (scheduler.get_current_tile(m_idx, n_idx)) {
             const uint32_t s = scheduler.stage_id();
             const int current_phase = scheduler.phase(s);
             full_barrier[s]->wait(current_phase & 1);
-            // tma_strategy::compute_and_store(
-            //     smem_x[s], smem_y[s], out, n_idx, m_idx, &tensor_map_out);
+            tma_strategy::compute_and_store(
+                smem_x[s], smem_y[s], out,
+                n_idx, m_idx, &tensor_map_out
+            );
             // Use elect_one_sync here because there is only one consumer warp
             if (runtime::elect_one_sync()) {
                 empty_barrier[s]->arrive();

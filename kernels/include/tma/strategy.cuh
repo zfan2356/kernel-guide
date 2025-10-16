@@ -43,25 +43,28 @@ template <typename Derived> struct TmaStrategy {
 // NumElem: number of bf16_2 elements processed per thread in registers
 // BlockM/BlockN: tile shape
 // M/N: problem shape
-template <uint32_t NumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N>
-struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN, M, N>> {
+template <uint32_t kNumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N>
+struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<kNumElem, BlockM, BlockN, M, N>> {
     struct Register {
-        bf16_2 regs[NumElem];
+        bf16_2 regs[kNumElem];
         __device__ __forceinline__ void load(void* src, uint32_t offs) {
             using copy = memory::Move<bf16_2, memory::CopyAtom::OpS2R>;
             void* src_ptr = reinterpret_cast<void*>(reinterpret_cast<bf16*>(src) + offs);
-            copy::move<NumElem>(regs, src_ptr);
+            copy::move<kNumElem>(regs, src_ptr);
         }
         __device__ __forceinline__ void compute() {
-            for (uint32_t i = 0; i < NumElem; i++) {
-                regs[i] = __hmul2(regs[i], bf16_2(2, 2));
-                regs[i] = __hadd2(regs[i], bf16_2(1, 1));
+            auto mul2_add1 = [&](bf16_2& v) {
+                v = __hadd2(__hmul2(v, bf16_2(2, 2)), bf16_2(1, 1));
+            };
+            #pragma unroll
+            for (uint32_t i = 0; i < kNumElem; i++) {
+                mul2_add1(regs[i]);
             }
         }
         __device__ __forceinline__ void store(void* dst, uint32_t offs) {
             using copy = memory::Move<bf16_2, memory::CopyAtom::OpR2S>;
             void* dst_ptr = reinterpret_cast<void*>(reinterpret_cast<bf16*>(dst) + offs);
-            copy::move<NumElem>(dst_ptr, regs);
+            copy::move<kNumElem>(dst_ptr, regs);
         }
     };
 
@@ -71,16 +74,20 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
         for (uint32_t i = 0; i < BlockM; i++) {
             bf16* smem_ptr = smem_x + i * BlockN;
             async::TMA::load_1d(
-                smem_ptr, &x[global_offset + i * N], BlockN * sizeof(bf16), barrier_ptr);
+                smem_ptr, &x[global_offset + i * N],
+                BlockN * sizeof(bf16), barrier_ptr
+            );
         }
     }
 
     __device__ __forceinline__ static void compute_and_store(bf16* smem_x, bf16* smem_y, bf16* out,
         uint32_t crd0, uint32_t crd1, const void* tensor_map) {
-        Register regs;
+        Register regs{};
         // Perform computation within a single warp
+        static constexpr auto kBlockSize = BlockM * BlockN;
+        static constexpr auto kWarpStep = kNumElem * 32 * 2;
         #pragma unroll
-        for (int i = runtime::laneid() * NumElem * 2; i < BlockM * BlockN; i += NumElem * 32 * 2) {
+        for (int i = runtime::laneid() * kNumElem * 2; i < kBlockSize; i += kWarpStep) {
             regs.load(smem_x, i);
             regs.compute();
             regs.store(smem_y, i);
@@ -93,7 +100,8 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
             for (uint32_t i = 0; i < BlockM; i++) {
                 bf16* smem_y_ptr = smem_y + i * BlockN;
                 async::TMA::store_1d(
-                    &out[global_offset + i * N], smem_y_ptr, BlockN * sizeof(bf16));
+                    &out[global_offset + i * N], smem_y_ptr, BlockN * sizeof(bf16)
+                );
             }
             async::TMA::tma_commit_group();
             async::TMA::tma_store_wait<0>();
@@ -105,27 +113,30 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<NumElem, BlockM, BlockN,
 // BlockM/BlockN: tile dimensions
 // M/N: global problem dimensions
 // Uses cp.async.bulk.tensor.2d for 2D asynchronous load/store operations
-template <uint32_t NumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N>
-struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<NumElem, BlockM, BlockN, M, N>> {
+template <uint32_t kNumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N>
+struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<kNumElem, BlockM, BlockN, M, N>> {
     using CopyAtom = memory::CopyAtom;
     template <CopyAtom LoadCopyAtom = CopyAtom::OpS2R, CopyAtom StoreCopyAtom = CopyAtom::OpR2S>
     struct Register {
-        bf16_2 regs[NumElem];
+        bf16_2 regs[kNumElem];
         __device__ __forceinline__ void load(void* src, uint32_t offs) {
             using copy = memory::Move<bf16_2, LoadCopyAtom>;
             void* src_ptr = reinterpret_cast<void*>(reinterpret_cast<bf16*>(src) + offs);
-            copy::move<NumElem>(regs, src_ptr);
+            copy::move<kNumElem>(regs, src_ptr);
         }
         __device__ __forceinline__ void compute() {
-            for (uint32_t i = 0; i < NumElem; i++) {
-                regs[i] = __hmul2(regs[i], bf16_2(2, 2));
-                regs[i] = __hadd2(regs[i], bf16_2(1, 1));
+            auto mul2_add1 = [&](bf16_2& v) {
+                v = __hadd2(__hmul2(v, bf16_2(2, 2)), bf16_2(1, 1));
+            };
+            #pragma unroll
+            for (uint32_t i = 0; i < kNumElem; i++) {
+                mul2_add1(regs[i]);
             }
         }
         __device__ __forceinline__ void store(void* dst, uint32_t offs) {
             using copy = memory::Move<bf16_2, StoreCopyAtom>;
             void* dst_ptr = reinterpret_cast<void*>(reinterpret_cast<bf16*>(dst) + offs);
-            copy::move<NumElem>(dst_ptr, regs);
+            copy::move<kNumElem>(dst_ptr, regs);
         }
     };
 
@@ -142,9 +153,11 @@ struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<NumElem, BlockM, BlockN,
             async::TMA::tma_store_wait<0>();
         }
         crd0 *= BlockN, crd1 *= BlockM;
-        Register regs;
+        Register regs{};
+        static constexpr auto kBlockSize = BlockM * BlockN;
+        static constexpr auto kWarpStep = kNumElem * 32 * 2;
         #pragma unroll
-        for (int i = runtime::laneid() * NumElem * 2; i < BlockM * BlockN; i += NumElem * 32 * 2) {
+        for (int i = runtime::laneid() * kNumElem * 2; i < kBlockSize; i += kWarpStep) {
             regs.load(smem_x, i);
             regs.compute();
             regs.store(smem_y, i);
