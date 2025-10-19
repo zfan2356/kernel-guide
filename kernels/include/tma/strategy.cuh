@@ -163,15 +163,6 @@ struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<kNumElem, BlockM, BlockN
         // calc swizzle mode
         if constexpr (SwizzleXMode != SwizzleOutMode) {
             // x to non-swizzle layout
-            auto swizzle_x2n = [&](int i, int j) {
-                constexpr uint32_t kBytes = sizeof(bf16);
-                constexpr uint32_t TMA_X_BLOCK_N = SwizzleXMode == 0 ? BlockN : (SwizzleXMode / kBytes);
-                auto atom_offset = i / (TMA_X_BLOCK_N / 8), in_atom_offset = i % (TMA_X_BLOCK_N / 8);
-            };
-            // non-swizzle layout to output swizzle layout
-            auto swizzle_n2o = [&]() {
-
-            };
         }
         #pragma unroll
         for (int i = runtime::laneid() * kNumElem * 2; i < kBlockSize; i += kWarpStep) {
@@ -184,6 +175,41 @@ struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<kNumElem, BlockM, BlockN
         if (runtime::elect_one_sync()) {
             async::TMA::store_2d(tensor_map, smem_y, crd0, crd1);
             async::TMA::tma_commit_group();
+        }
+    }
+};
+
+template<uint32_t SwizzleMode>
+struct SwizzlePattern {
+    // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#the-swizzle-modes
+    // This Functor will implement the swizzle pattern for the given SwizzleMode
+    static constexpr uint32_t kBytes = sizeof(bf16);
+    static constexpr uint32_t kBankGroupBytes = 16; // it fixed to 16 bytes for document
+    static constexpr uint32_t kBankBytes = 4; // in shared memory, each bank is 4 bytes
+    static constexpr uint32_t kInnerDimBlock = SwizzleMode / kBytes;
+    __device__ __forceinline__ int2 operator()(int i, int j) const {
+        // particularly for x, we have [BlockM, BlockN] shape for non-swizzle layout,
+        // but for swizzle layout, we have [BlockM, kInnerDimBlock] shape, -> [kInnerDimBlock, BlockM]
+
+        auto swizzle_128b = [&](int i, int j) {
+            // swizzle 128 bytes means that we will interleave 128 / 16 = 8 bank groups
+            // now BlockN is 64 bfloat16 -> 128 bytes
+            // so it will wrap 8 bfloat16 to one bank group, and interleave 8 "bank group rows" => 64 rows
+            // 128 bytes is suitable for 64 * 64 shared memory block
+        };
+
+
+        switch (SwizzleMode) {
+            case 0:
+            return {i, j};
+            case 16:
+            return {i, j};
+            case 32:
+            return {i, j};
+            case 64:
+            return {i, j};
+            case 128:
+            return {i, j};
         }
     }
 };
