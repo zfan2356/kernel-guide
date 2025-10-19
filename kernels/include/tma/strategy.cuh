@@ -43,8 +43,8 @@ template <typename Derived> struct TmaStrategy {
 // NumElem: number of bf16_2 elements processed per thread in registers
 // BlockM/BlockN: tile shape
 // M/N: problem shape
-template <uint32_t kNumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N>
-struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<kNumElem, BlockM, BlockN, M, N>> {
+template <uint32_t kNumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N, uint32_t SwizzleXMode, uint32_t SwizzleOutMode>
+struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<kNumElem, BlockM, BlockN, M, N, SwizzleXMode, SwizzleOutMode>> {
     struct Register {
         bf16_2 regs[kNumElem];
         __device__ __forceinline__ void load(void* src, uint32_t offs) {
@@ -113,8 +113,8 @@ struct TmaStrategyV1 : public TmaStrategy<TmaStrategyV1<kNumElem, BlockM, BlockN
 // BlockM/BlockN: tile dimensions
 // M/N: global problem dimensions
 // Uses cp.async.bulk.tensor.2d for 2D asynchronous load/store operations
-template <uint32_t kNumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N>
-struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<kNumElem, BlockM, BlockN, M, N>> {
+template <uint32_t kNumElem, uint32_t BlockM, uint32_t BlockN, uint32_t M, uint32_t N, uint32_t SwizzleXMode, uint32_t SwizzleOutMode>
+struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<kNumElem, BlockM, BlockN, M, N, SwizzleXMode, SwizzleOutMode>> {
     using CopyAtom = memory::CopyAtom;
     template <CopyAtom LoadCopyAtom = CopyAtom::OpS2R, CopyAtom StoreCopyAtom = CopyAtom::OpR2S>
     struct Register {
@@ -142,7 +142,10 @@ struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<kNumElem, BlockM, BlockN
 
     __device__ __forceinline__ static void tma_async_load(bf16* smem_x, bf16* x,
         uint32_t* barrier_ptr, uint32_t crd0, uint32_t crd1, const void* tensor_map) {
-        crd0 = crd0 * BlockN, crd1 = crd1 * BlockM;
+        crd0 *= BlockN, crd1 *= BlockM;
+        // constexpr auto cache_hint = static_cast<uint64_t>(cute::TMA::CacheHintSm90::EVICT_NORMAL);
+        // cute::SM90_TMA_LOAD_2D::copy(tensor_map, reinterpret_cast<uint64_t*>(barrier_ptr),
+        //                                 cache_hint, smem_x, crd0, crd1);
         async::TMA::load_2d(smem_x, tensor_map, barrier_ptr, crd0, crd1);
     }
 
@@ -156,6 +159,20 @@ struct TmaStrategyV2 : public TmaStrategy<TmaStrategyV2<kNumElem, BlockM, BlockN
         Register regs{};
         static constexpr auto kBlockSize = BlockM * BlockN;
         static constexpr auto kWarpStep = kNumElem * 32 * 2;
+
+        // calc swizzle mode
+        if constexpr (SwizzleXMode != SwizzleOutMode) {
+            // x to non-swizzle layout
+            auto swizzle_x2n = [&](int i, int j) {
+                constexpr uint32_t kBytes = sizeof(bf16);
+                constexpr uint32_t TMA_X_BLOCK_N = SwizzleXMode == 0 ? BlockN : (SwizzleXMode / kBytes);
+                auto atom_offset = i / (TMA_X_BLOCK_N / 8), in_atom_offset = i % (TMA_X_BLOCK_N / 8);
+            };
+            // non-swizzle layout to output swizzle layout
+            auto swizzle_n2o = [&]() {
+
+            };
+        }
         #pragma unroll
         for (int i = runtime::laneid() * kNumElem * 2; i < kBlockSize; i += kWarpStep) {
             regs.load(smem_x, i);

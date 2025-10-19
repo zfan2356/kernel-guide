@@ -54,9 +54,10 @@ private:
     int phases_[kNumStages];
 };
 
-template <uint32_t kNumSMs, uint32_t kNumWarpsPerBlock, uint32_t kNumConsumers, uint32_t kNumProducers,
-    uint32_t kNumStages, uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN,
-    uint32_t SwizzleMode>
+template <uint32_t kNumSMs, uint32_t kNumWarpsPerBlock,
+    uint32_t kNumConsumers, uint32_t kNumProducers, uint32_t kNumStages,
+    uint32_t M, uint32_t N, uint32_t BlockM, uint32_t BlockN,
+    uint32_t SwizzleXMode, uint32_t SwizzleOutMode>
 __global__ __launch_bounds__(kNumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, bf16* out,
     const __grid_constant__ CUtensorMap tensor_map_x,
     const __grid_constant__ CUtensorMap tensor_map_out) {
@@ -132,8 +133,7 @@ __global__ __launch_bounds__(kNumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, b
     }
     __syncthreads();
 
-    using tma_strategy = TmaStrategyV2<4, BlockM, BlockN, M, N>;
-
+    using tma_strategy = TmaStrategyV2<4, BlockM, BlockN, M, N, SwizzleXMode, SwizzleOutMode>;
     uint32_t warp_id = runtime::warpid(), lane_id = runtime::laneid();
     if (warp_id >= kNumConsumers) {
         // Producer
@@ -158,7 +158,7 @@ __global__ __launch_bounds__(kNumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, b
                     smem_x[s], x, barrier_ptr,
                     n_idx, m_idx, &tensor_map_x
                 );
-                full_barrier[s]->arrive_and_expect_tx(BlockM * BlockN * sizeof(bf16));
+                full_barrier[s]->arrive_and_expect_tx(SMEM_SIZE);
                 scheduler.advance();
             }
         }
@@ -170,9 +170,10 @@ __global__ __launch_bounds__(kNumWarpsPerBlock * 32, 1) void tma_impl(bf16* x, b
             const uint32_t s = scheduler.stage_id();
             const int current_phase = scheduler.phase(s);
             full_barrier[s]->wait(current_phase & 1);
+
+            // pass swizzle mode to template, for store
             tma_strategy::compute_and_store(
-                smem_x[s], smem_y[s], out,
-                n_idx, m_idx, &tensor_map_out
+                smem_x[s], smem_y[s], out, n_idx, m_idx, &tensor_map_out
             );
             // Use elect_one_sync here because there is only one consumer warp
             if (runtime::elect_one_sync()) {
